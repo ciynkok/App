@@ -1,0 +1,113 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./auth-service/init.sql:/docker-entrypoint-initdb.d/01-auth-schema.sql
+      - ./tasks-service/init.sql:/docker-entrypoint-initdb.d/02-tasks-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - app-network
+
+  auth:
+    build: ./auth-service
+    ports:
+      - "3001:3001"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  task:
+    build: ./tasks-service
+    ports:
+      - "3002:3002"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  realtime:
+    build: ./realtime-service
+    ports:
+      - "3003:3003"
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+      auth:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    env_file: .env
+    depends_on:
+      - auth
+      - task
+      - realtime
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  nginx:
+    build: ./nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - frontend
+      - auth
+      - task
+      - realtime
+    restart: unless-stopped
+    networks:
+      - app-network
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  app-network:
+    driver: bridge
