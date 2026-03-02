@@ -24,11 +24,11 @@
 ## Обязанности сервиса
 
 - Регистрация и логин пользователей (email + password)
-- OAuth2 через Google и GitHub (Passport.js)
+- OAuth2 через Google и GitHub (Authlib)
 - Выдача `access_token` (JWT, TTL: 1h) и `refresh_token` (TTL: 30d)
 - Валидация и инвалидация токенов (Redis blacklist)
 - Хранение и управление ролями: `admin`, `editor`, `viewer`
-- Middleware `checkRole()` — используется как npm-пакет или копируется в другие сервисы
+- Middleware для проверки JWT и ролей
 
 **Порт:** `3001`
 **Внутренний хост в Docker-сети:** `auth`
@@ -40,29 +40,27 @@
 ```
 auth-service/
 ├── Dockerfile
-├── package.json
+├── requirements.txt
 ├── .env                          # не в git
-├── prisma/
-│   ├── schema.prisma             # Модели: User, RefreshToken, OAuthAccount
-│   └── migrations/               # Автогенерируется Prisma
 ├── src/
-│   ├── index.js                  # Точка входа: Express app, порт 3001
+│   ├── main.py                   # Точка входа: FastAPI app, порт 3001
 │   ├── config/
-│   │   ├── passport.js           # Настройка Passport.js стратегий (Google, GitHub)
-│   │   └── redis.js              # Подключение ioredis
+│   │   ├── database.py           # SQLAlchemy подключение
+│   │   └── redis.py              # Подключение aioredis
 │   ├── routes/
-│   │   └── auth.routes.js        # Все /auth/* маршруты
-│   ├── controllers/
-│   │   └── auth.controller.js    # Логика обработчиков
+│   │   └── auth.py               # Все /auth/* маршруты
 │   ├── middleware/
-│   │   ├── checkAuth.js          # Проверка JWT из Authorization header
-│   │   └── checkRole.js          # RBAC: checkRole('admin'), checkRole('editor')
+│   │   └── auth.py               # RBAC middleware
 │   ├── services/
-│   │   ├── token.service.js      # Генерация/валидация JWT и refresh токенов
-│   │   └── user.service.js       # Работа с пользователями через Prisma
-│   └── utils/
-│       └── errors.js             # Стандартный формат ошибок { error: { code, message } }
-└── init.sql                      # DDL схемы auth (запускается при старте postgres)
+│   │   ├── token.py              # Генерация/валидация JWT и refresh токенов
+│   │   └── user.py               # Работа с пользователями через SQLAlchemy
+│   ├── models/
+│   │   └── user.py               # Модели: User, RefreshToken, OAuthAccount
+│   └── schemas/
+│       └── auth.py               # Pydantic схемы для валидации
+└── alembic/                      # Миграции БД
+    ├── env.py
+    └── versions/                 # Автогенерируется Alembic
 ```
 
 ---
@@ -70,24 +68,22 @@ auth-service/
 ## Dockerfile
 
 ```dockerfile
-FROM node:22-alpine
+FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci --only=production
+# Установка зависимостей
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN npx prisma generate
-
-EXPOSE 3001
-
-CMD ["node", "src/index.js"]
+# Миграции БД выполняются при старте контейнера
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "3001"]
 ```
 
-> Prisma generate нужен на этапе сборки, чтобы сгенерировать клиент под Alpine Linux.
-> Миграции (`prisma migrate deploy`) запускать отдельно или через entrypoint-скрипт.
+> Миграции Alembic можно запускать через entrypoint-скрипт или вручную:
+> `docker compose exec auth alembic upgrade head`
 
 ---
 
@@ -129,77 +125,73 @@ PORT=3001
 
 Auth Service использует **схему `auth`** внутри общей PostgreSQL базы. Прямые JOIN с таблицами схемы `task` запрещены.
 
-### Prisma schema
+### SQLAlchemy модели
 
-```prisma
-generator client {
-  provider = "prisma-client-js"
-}
+```python
+# src/models/user.py
+from sqlalchemy import Column, String, DateTime, ForeignKey, Enum, Boolean, Text
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
+from sqlalchemy.ext.declarative import declarative_base
+import uuid
+import enum
 
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
+Base = declarative_base()
 
-model User {
-  id            String         @id @default(uuid()) @db.Uuid
-  email         String         @unique
-  passwordHash  String?        @map("password_hash")
-  name          String
-  avatarUrl     String?        @map("avatar_url")
-  role          Role           @default(viewer)
-  createdAt     DateTime       @default(now()) @map("created_at")
-  updatedAt     DateTime       @updatedAt @map("updated_at")
+class Role(enum.Enum):
+    admin = "admin"
+    editor = "editor"
+    viewer = "viewer"
 
-  refreshTokens RefreshToken[]
-  oauthAccounts OAuthAccount[]
+class Provider(enum.Enum):
+    google = "google"
+    github = "github"
 
-  @@map("users")
-  @@schema("auth")
-}
+class User(Base):
+    __tablename__ = "users"
+    __table_args__ = {"schema": "auth"}
 
-model RefreshToken {
-  id         String   @id @default(uuid()) @db.Uuid
-  userId     String   @map("user_id") @db.Uuid
-  tokenHash  String   @map("token_hash")
-  expiresAt  DateTime @map("expires_at")
-  revoked    Boolean  @default(false)
-  createdAt  DateTime @default(now()) @map("created_at")
+    id = Column(UUID(as_uuid=True), primary_key=True, default=lambda: uuid.uuid4())
+    email = Column(String(255), unique=True, nullable=False)
+    password_hash = Column(String(255), nullable=True)
+    name = Column(String(255), nullable=False)
+    avatar_url = Column(Text, nullable=True)
+    role = Column(Enum(Role), nullable=False, default=Role.viewer)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+    refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
+    oauth_accounts = relationship("OAuthAccount", back_populates="user", cascade="all, delete-orphan")
 
-  @@map("refresh_tokens")
-  @@schema("auth")
-}
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+    __table_args__ = {"schema": "auth"}
 
-model OAuthAccount {
-  id          String   @id @default(uuid()) @db.Uuid
-  userId      String   @map("user_id") @db.Uuid
-  provider    Provider
-  providerId  String   @map("provider_id")
-  accessToken String?  @map("access_token")
+    id = Column(UUID(as_uuid=True), primary_key=True, default=lambda: uuid.uuid4())
+    user_id = Column(UUID(as_uuid=True), ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False)
+    token_hash = Column(String(255), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    revoked = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=func.now())
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+    user = relationship("User", back_populates="refresh_tokens")
 
-  @@unique([provider, providerId])
-  @@map("oauth_accounts")
-  @@schema("auth")
-}
+class OAuthAccount(Base):
+    __tablename__ = "oauth_accounts"
+    __table_args__ = {"schema": "auth"}
 
-enum Role {
-  admin
-  editor
-  viewer
+    id = Column(UUID(as_uuid=True), primary_key=True, default=lambda: uuid.uuid4())
+    user_id = Column(UUID(as_uuid=True), ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False)
+    provider = Column(Enum(Provider), nullable=False)
+    provider_id = Column(String(255), nullable=False)
+    access_token = Column(Text, nullable=True)
 
-  @@schema("auth")
-}
+    user = relationship("User", back_populates="oauth_accounts")
 
-enum Provider {
-  google
-  github
-
-  @@schema("auth")
-}
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_id", name="uq_provider_provider_id"),
+        {"schema": "auth"}
+    )
 ```
 
 ### init.sql (DDL — альтернатива Prisma migrations)
@@ -480,77 +472,107 @@ router.delete('/api/tasks/:id', checkAuth, checkRole('admin'), deleteTask)
 
 ## OAuth2 — Google и GitHub
 
-### Passport.js конфигурация (src/config/passport.js)
+### Authlib конфигурация (src/config/oauth.py)
 
-```js
-const passport = require('passport')
-const { Strategy: GoogleStrategy } = require('passport-google-oauth20')
-const { Strategy: GitHubStrategy } = require('passport-github2')
+```python
+# src/config/oauth.py
+from authlib.integrations.starlette_client import OAuth
 
-// Общая логика: найти или создать пользователя по OAuth профилю
-async function findOrCreateOAuthUser(profile, provider) {
-  // 1. Найти в oauth_accounts по provider + provider_id
-  // 2. Если найден — вернуть user
-  // 3. Если нет — создать User + OAuthAccount
-  // 4. Вернуть user
-}
+oauth = OAuth()
 
-passport.use(new GoogleStrategy({
-  clientID: process.env.GOOGLE_CLIENT_ID,
-  clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-  callbackURL: process.env.GOOGLE_CALLBACK_URL,
-}, async (accessToken, refreshToken, profile, done) => {
-  try {
-    const user = await findOrCreateOAuthUser(profile, 'google')
-    done(null, user)
-  } catch (err) {
-    done(err)
-  }
-}))
+CONF_URL = "https://accounts.google.com/.well-known/openid-configuration"
 
-passport.use(new GitHubStrategy({
-  clientID: process.env.GITHUB_CLIENT_ID,
-  clientSecret: process.env.GITHUB_CLIENT_SECRET,
-  callbackURL: process.env.GITHUB_CALLBACK_URL,
-}, async (accessToken, refreshToken, profile, done) => {
-  try {
-    const user = await findOrCreateOAuthUser(profile, 'github')
-    done(null, user)
-  } catch (err) {
-    done(err)
-  }
-}))
+def configure_oauth(app):
+    # Google OAuth2
+    oauth.register(
+        name="google",
+        client_id=app.settings.GOOGLE_CLIENT_ID,
+        client_secret=app.settings.GOOGLE_CLIENT_SECRET,
+        server_metadata_url=CONF_URL,
+        client_kwargs={
+            "scope": "openid email profile",
+        },
+    )
+
+    # GitHub OAuth2
+    oauth.register(
+        name="github",
+        client_id=app.settings.GITHUB_CLIENT_ID,
+        client_secret=app.settings.GITHUB_CLIENT_SECRET,
+        access_token_url="https://github.com/login/oauth/access_token",
+        authorize_url="https://github.com/login/oauth/authorize",
+        api_base_url="https://api.github.com/",
+        client_kwargs={
+            "scope": "user:email",
+        },
+    )
+```
+
+### Обработчик OAuth callback (src/routes/auth.py)
+
+```python
+@router.get("/google/callback")
+async def google_callback(request: Request):
+    code = request.query_params.get("code")
+    tokens = await oauth.google.authorize_access_token(request)
+    user_info = tokens.get("userinfo")
+    
+    # Найти или создать пользователя по OAuth профилю
+    db_user = await find_or_create_oauth_user(
+        provider="google",
+        provider_id=user_info["sub"],
+        email=user_info["email"],
+        name=user_info["name"],
+        avatar_url=user_info.get("picture"),
+    )
+    
+    # Сгенерировать JWT токены
+    access_token = create_access_token(db_user)
+    refresh_token = create_refresh_token(db_user)
+    
+    # Редирект на frontend с токенами
+    redirect_url = f"{FRONTEND_URL}/auth/callback?token={access_token}&refreshToken={refresh_token}"
+    return RedirectResponse(url=redirect_url)
+
+@router.get("/github/callback")
+async def github_callback(request: Request):
+    code = request.query_params.get("code")
+    tokens = await oauth.github.authorize_access_token(request)
+    user_info = tokens.get("userinfo")
+    
+    db_user = await find_or_create_oauth_user(
+        provider="github",
+        provider_id=str(user_info["id"]),
+        email=user_info["email"],
+        name=user_info["name"],
+        avatar_url=user_info.get("avatar_url"),
+    )
+    
+    access_token = create_access_token(db_user)
+    refresh_token = create_refresh_token(db_user)
+    
+    redirect_url = f"{FRONTEND_URL}/auth/callback?token={access_token}&refreshToken={refresh_token}"
+    return RedirectResponse(url=redirect_url)
 ```
 
 ---
 
-## Зависимости (npm)
+## Зависимости (requirements.txt)
 
-```json
-{
-  "dependencies": {
-    "express": "^4.18.0",
-    "passport": "^0.7.0",
-    "passport-google-oauth20": "^2.0.0",
-    "passport-github2": "^0.1.12",
-    "jsonwebtoken": "^9.0.0",
-    "bcrypt": "^5.1.0",
-    "@prisma/client": "^5.0.0",
-    "ioredis": "^5.3.0",
-    "joi": "^17.9.0",
-    "cors": "^2.8.5",
-    "helmet": "^7.0.0",
-    "express-rate-limit": "^7.0.0",
-    "uuid": "^9.0.0",
-    "dotenv": "^16.0.0"
-  },
-  "devDependencies": {
-    "prisma": "^5.0.0",
-    "nodemon": "^3.0.0",
-    "jest": "^29.0.0",
-    "supertest": "^6.3.0"
-  }
-}
+```txt
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+sqlalchemy==2.0.25
+alembic==1.13.1
+psycopg2-binary==2.9.9
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+aioredis==2.0.1
+httpx==0.26.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+python-multipart==0.0.6
+authlib==1.3.0
 ```
 
 ---

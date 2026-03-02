@@ -1,15 +1,22 @@
-FROM node:22-alpine
+FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci --only=production
+# Установка системных зависимостей
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Установка Python зависимостей
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Для сервисов с Prisma — генерация клиента
-RUN npx prisma generate
+# Миграции БД выполняются при старте через entrypoint или вручную
+# RUN alembic upgrade head
 
 EXPOSE 3001
 
-CMD ["node", "src/index.js"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "3001"]

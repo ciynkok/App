@@ -1,6 +1,6 @@
 # Frontend
 
-Next.js 15 приложение — клиентская часть платформы. Реализует Kanban-интерфейс с drag-and-drop, real-time обновлениями через WebSocket, встроенным чатом, тёмной темой и burn-down chart. Потребляет REST API Task Service и Auth Service, подключается к Realtime Service по WebSocket.
+Next.js 15 приложение — клиентская часть платформы. Реализует Kanban-интерфейс с drag-and-drop, real-time обновлениями через WebSocket, встроенным чатом, тёмной темой и burn-down chart. Потребляет REST API FastAPI сервисов (Auth Service, Task Service), подключается к Realtime Service по WebSocket.
 
 ---
 

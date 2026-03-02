@@ -1,6 +1,6 @@
 # Realtime Service
 
-Сервис real-time коммуникации. Управляет WebSocket-соединениями через Socket.io, транслирует события между участниками досок, хранит историю чата и присутствие пользователей в Redis. Принимает HTTP webhook от Task Service и рассылает события всем подключённым клиентам нужной доски.
+Сервис real-time коммуникации. Управляет WebSocket-соединениями через FastAPI WebSocket, транслирует события между участниками досок, хранит историю чата и присутствие пользователей в Redis. Принимает HTTP webhook от Task Service и рассылает события всем подключённым клиентам нужной доски.
 
 ---
 
@@ -28,7 +28,7 @@
 
 - Принимать WebSocket-соединения от Frontend клиентов
 - Аутентифицировать подключения по JWT (без запросов к Auth Service)
-- Организовывать клиентов в **комнаты по `boardId`** (Socket.io rooms)
+- Организовывать клиентов в **комнаты по `boardId`** (WebSocket rooms)
 - Принимать HTTP webhook от Task Service и **транслировать события** всем клиентам комнаты
 - Обеспечивать **встроенный чат** — хранение истории в Redis, рассылка сообщений
 - Отслеживать **присутствие пользователей** на доске (online/offline)
@@ -45,26 +45,26 @@
 ```
 realtime-service/
 ├── Dockerfile
-├── package.json
+├── requirements.txt
 ├── .env                                  # не в git
 └── src/
-    ├── index.js                          # Точка входа: Express + Socket.io сервер, порт 3003
+    ├── main.py                           # Точка входа: FastAPI + WebSocket, порт 3003
     ├── config/
-    │   └── redis.js                      # Два Redis клиента: обычный + subscriber для Pub/Sub
+    │   └── redis.py                      # Redis подключение
     ├── middleware/
-    │   └── socketAuth.js                 # JWT-аутентификация WebSocket handshake
+    │   └── ws_auth.py                    # JWT-аутентификация WebSocket
     ├── handlers/
-    │   ├── connection.handler.js         # Обработка connect/disconnect событий
-    │   ├── board.handler.js              # join:board, leave:board
-    │   ├── chat.handler.js               # chat:message — приём и рассылка
-    │   └── task.handler.js               # Обработка task:* событий (из webhook)
+    │   ├── websocket.py                  # Обработка WebSocket подключений
+    │   ├── board.py                      # join:board, leave:board
+    │   ├── chat.py                       # chat:message — приём и рассылка
+    │   └── task.py                       # Обработка task:* событий
     ├── services/
-    │   ├── chat.service.js               # Сохранение/получение истории чата из Redis
-    │   ├── presence.service.js           # Управление online-статусом в Redis Sets
-    │   ├── lock.service.js               # Оптимистичная блокировка задач в Redis
-    │   └── pubsub.service.js             # Redis Pub/Sub: publish + subscribe
+    │   ├── chat.py                       # Сохранение/получение истории чата из Redis
+    │   ├── presence.py                   # Управление online-статусом в Redis Sets
+    │   ├── lock.py                       # Оптимистичная блокировка задач в Redis
+    │   └── pubsub.py                     # Redis Pub/Sub: publish + subscribe
     └── routes/
-        └── internal.routes.js            # POST /internal/events — webhook от Task Service
+        └── internal.py                   # POST /internal/events — webhook от Task Service
 ```
 
 ---
@@ -72,18 +72,17 @@ realtime-service/
 ## Dockerfile
 
 ```dockerfile
-FROM node:22-alpine
+FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci --only=production
+# Установка зависимостей
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 3003
-
-CMD ["node", "src/index.js"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "3003"]
 ```
 
 ---
@@ -157,47 +156,77 @@ await redis.del(`rt:board:${boardId}:lock:${taskId}`)
 
 ---
 
-## Socket.io — комнаты и подключение
+## WebSocket — подключение
 
-Каждая доска — отдельная **Socket.io комната** с именем `board:{boardId}`. Это позволяет транслировать события только участникам конкретной доски.
+Каждая доска — отдельная **комната** с именем `board:{boardId}`. Это позволяет транслировать события только участникам конкретной доски.
 
-### Точка входа `src/index.js`
+### Точка входа `src/main.py`
 
-```js
-const express = require('express')
-const { createServer } = require('http')
-const { Server } = require('socket.io')
-const { socketAuth } = require('./middleware/socketAuth')
-const { registerConnectionHandler } = require('./handlers/connection.handler')
-const internalRouter = require('./routes/internal.routes')
+```python
+# src/main.py
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.websockets import WebSocketState
+import jwt
+from redis import asyncio as aioredis
 
-const app = express()
-app.use(express.json())
-app.use('/internal', internalRouter)  // HTTP endpoint для webhook от Task Service
+from .handlers import websocket, board, chat, task
+from .routes import internal
+from .config import redis, settings
 
-const httpServer = createServer(app)
+app = FastAPI()
 
-const io = new Server(httpServer, {
-  cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-    methods: ['GET', 'POST'],
-    credentials: true,
-  },
-  transports: ['websocket', 'polling'],  // polling как fallback
-})
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[settings.FRONTEND_URL],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-// JWT-аутентификация при подключении
-io.use(socketAuth)
+# Подключение HTTP роутов
+app.include_router(internal.router, prefix="/internal")
 
-// Регистрация обработчиков
-io.on('connection', (socket) => registerConnectionHandler(io, socket))
+# Хранилище активных подключений по комнатам
+connection_manager = websocket.ConnectionManager()
 
-// Передать io в internal routes для рассылки событий из webhook
-app.set('io', io)
-
-httpServer.listen(process.env.PORT || 3003, () => {
-  console.log(`Realtime Service running on port ${process.env.PORT || 3003}`)
-})
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await connection_manager.accept(websocket)
+    
+    # JWT-аутентификация при подключении
+    try:
+        token = websocket.query_params.get("token")
+        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+        websocket.user = {
+            "id": payload["sub"],
+            "role": payload["role"],
+            "email": payload["email"],
+        }
+    except (jwt.JWTError, KeyError):
+        await websocket.close(code=4001)
+        return
+    
+    try:
+        while True:
+            data = await websocket.receive_json()
+            event_type = data.get("type")
+            payload = data.get("payload", {})
+            
+            # Маршрутизация событий
+            if event_type == "join:board":
+                await board.handle_join(websocket, payload, connection_manager)
+            elif event_type == "leave:board":
+                await board.handle_leave(websocket, payload, connection_manager)
+            elif event_type == "chat:message":
+                await chat.handle_message(websocket, payload, connection_manager)
+            elif event_type == "task:lock":
+                await task.handle_lock(websocket, payload, connection_manager)
+            elif event_type == "task:unlock":
+                await task.handle_unlock(websocket, payload, connection_manager)
+                
+    except WebSocketDisconnect:
+        await connection_manager.disconnect(websocket)
 ```
 
 ---
@@ -597,24 +626,18 @@ module.exports = { registerTaskHandler }
 
 ---
 
-## Зависимости (npm)
+## Зависимости (requirements.txt)
 
-```json
-{
-  "dependencies": {
-    "express": "^4.18.0",
-    "socket.io": "^4.7.0",
-    "ioredis": "^5.3.0",
-    "jsonwebtoken": "^9.0.0",
-    "cors": "^2.8.5",
-    "helmet": "^7.0.0",
-    "dotenv": "^16.0.0"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.0",
-    "jest": "^29.0.0"
-  }
-}
+```txt
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+websockets==12.0
+python-jose[cryptography]==3.3.0
+aioredis==2.0.1
+httpx==0.26.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+python-multipart==0.0.6
 ```
 
 ---
@@ -634,7 +657,7 @@ module.exports = { registerTaskHandler }
        ▼                   ▼                  ▼
 ┌────────────┐   ┌──────────────────┐   ┌────────────────────┐
 │Auth Service│   │  Task Service    │   │     Frontend       │
-│(не вызывает│   │  (отправляет     │   │  socket.io-client  │
+│(не вызывает│   │  (отправляет     │   │  WebSocket         │
 │ в рантайме)│   │  webhooks при    │   │  join:board        │
 └────────────┘   │  CRUD событиях)  │   │  chat:message      │
                  └──────────────────┘   │  task:lock / unlock│

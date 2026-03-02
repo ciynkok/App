@@ -117,10 +117,10 @@ docker compose down -v
 
 **Кратко:**
 - **Frontend:** Next.js 15, React 19, Tailwind CSS, Socket.io-client
-- **Backend:** Node.js 22, Express.js, Prisma ORM
+- **Backend:** Python 3.12, FastAPI, SQLAlchemy
 - **Database:** PostgreSQL 16, Redis 7
-- **Auth:** Passport.js, jsonwebtoken, bcrypt
-- **Real-time:** Socket.io, ioredis
+- **Auth:** python-jose, passlib, httpx
+- **Real-time:** websockets, aiohttp
 - **Deployment:** Docker Compose, Nginx
 
 ## Документация

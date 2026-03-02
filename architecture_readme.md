@@ -35,36 +35,36 @@ collab-dashboard/
 │
 ├── auth-service/                       # Dev 1 — Auth Service (порт 3001)
 │   ├── Dockerfile
-│   ├── package.json
+│   ├── requirements.txt
 │   └── src/
-│       ├── index.js                    # Точка входа, Express app
+│       ├── main.py                     # Точка входа: FastAPI app
 │       ├── routes/
-│       │   └── auth.routes.js          # /auth/* endpoints
+│       │   └── auth.py                 # /auth/* endpoints
 │       ├── middleware/
-│       │   └── checkRole.js            # RBAC middleware
-│       ├── prisma/
-│       │   └── schema.prisma           # Схема: users, refresh_tokens, oauth_accounts
-│       └── init.sql                    # DDL для auth schema (если нужно)
+│       │   └── auth.py                 # RBAC middleware
+│       └── db/
+│           ├── database.py             # SQLAlchemy подключение
+│           └── models.py               # Модели: User, RefreshToken, OAuthAccount
 │
 ├── task-service/                       # Dev 2 — Task Service (порт 3002)
 │   ├── Dockerfile
-│   ├── package.json
+│   ├── requirements.txt
 │   └── src/
-│       ├── index.js
+│       ├── main.py
 │       ├── routes/
-│       │   ├── boards.routes.js        # /api/boards
-│       │   └── tasks.routes.js         # /api/tasks
-│       ├── prisma/
-│       │   └── schema.prisma           # Схема: boards, columns, tasks, comments, board_members
-│       └── init.sql
+│       │   ├── boards.py               # /api/boards
+│       │   └── tasks.py                # /api/tasks
+│       └── db/
+│           ├── database.py
+│           └── models.py               # Модели: Board, Column, Task, Comment, BoardMember
 │
 ├── realtime-service/                   # Dev 3 — Real-time Service (порт 3003)
 │   ├── Dockerfile
-│   ├── package.json
+│   ├── requirements.txt
 │   └── src/
-│       ├── index.js                    # Socket.io сервер + Express для /internal/events
+│       ├── main.py                     # FastAPI + WebSocket endpoint
 │       └── handlers/
-│           └── events.handler.js       # Обработка WebSocket событий
+│           └── events.py               # Обработка WebSocket событий
 │
 └── frontend/                           # Dev 3 — Next.js 15 (порт 3000)
     ├── Dockerfile
@@ -106,7 +106,7 @@ collab-dashboard/
 │AUTH SERVICE│   │ TASK SERVICE │   │REALTIME SERVICE│
 │  порт 3001 │   │   порт 3002  │   │   порт 3003    │
 │            │   │              │   │                │
-│ JWT выдача │   │ CRUD Boards  │   │ Socket.io WS   │
+│ JWT выдача │   │ CRUD Boards  │   │ WebSocket WS   │
 │ OAuth2     │   │ CRUD Tasks   │   │ Redis Pub/Sub  │
 │ Google     │   │ CRUD Columns │   │ Chat history   │
 │ GitHub     │   │ Comments     │   │ Presence       │
@@ -144,9 +144,9 @@ collab-dashboard/
 | Сервис | Контейнер | Внутренний порт | Внешний порт | Технологии |
 |--------|-----------|-----------------|--------------|-----------|
 | Frontend | `frontend` | 3000 | 3000 | Next.js 15, React 19 |
-| Auth Service | `auth` | 3001 | 3001 | Node.js 22, Express, Passport.js |
-| Task Service | `task` | 3002 | 3002 | Node.js 22, Express, Prisma |
-| Real-time Service | `realtime` | 3003 | 3003 | Node.js 22, Socket.io |
+| Auth Service | `auth` | 3001 | 3001 | Python 3.12, FastAPI, SQLAlchemy |
+| Task Service | `task` | 3002 | 3002 | Python 3.12, FastAPI, SQLAlchemy |
+| Real-time Service | `realtime` | 3003 | 3003 | Python 3.12, FastAPI, websockets |
 | Nginx | `nginx` | 80/443 | 80/443 | Nginx reverse proxy |
 | PostgreSQL | `postgres` | 5432 | 5432 | PostgreSQL 16 |
 | Redis | `redis` | 6379 | 6379 | Redis 7 Alpine |
@@ -354,7 +354,7 @@ Content-Type: application/json
 
 ## WebSocket события
 
-Real-time Service (порт 3003) использует **комнаты Socket.io** по `boardId`.
+Real-time Service (порт 3003) использует **WebSocket endpoint на FastAPI** с комнатами по `boardId`.
 
 ### Клиент → Сервер
 
@@ -428,21 +428,22 @@ NODE_ENV=development
 ### Dockerfile шаблон (для auth-service, task-service, realtime-service)
 
 ```dockerfile
-FROM node:22-alpine
+FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci --only=production
+# Установка зависимостей
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Для сервисов с Prisma — генерация клиента
-# RUN npx prisma generate
-
 EXPOSE <PORT>
 
-CMD ["node", "src/index.js"]
+# Для сервисов с миграциями Alembic
+# RUN alembic upgrade head
+
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "<PORT>"]
 ```
 
 > Замени `<PORT>` на: `3001` (auth), `3002` (task), `3003` (realtime)
@@ -633,9 +634,9 @@ cp .env.example .env
 # 3. Запустить весь стек
 docker compose up --build
 
-# 4. (Опционально) Запустить миграции Prisma вручную, если не автостарт
-docker compose exec auth npx prisma migrate deploy
-docker compose exec task npx prisma migrate deploy
+# 4. (Опционально) Запустить миграции Alembic вручную, если не автостарт
+docker compose exec auth alembic upgrade head
+docker compose exec task alembic upgrade head
 
 # Остановка и удаление volumes
 docker compose down -v
@@ -661,18 +662,17 @@ docker compose down -v
 | Socket.io-client | — | WebSocket на клиенте |
 | Recharts | — | Burn-down chart |
 | Zustand | — | Глобальный стейт (user, board) |
-| Node.js | 22 LTS | Backend runtime |
-| Express.js | — | HTTP framework (все backend-сервисы) |
-| Passport.js | — | OAuth2 стратегии (Google, GitHub) |
-| jsonwebtoken | — | JWT выдача/валидация |
-| bcrypt | — | Хэширование паролей |
-| Prisma ORM | — | Type-safe запросы к PostgreSQL |
-| Socket.io | — | WebSocket сервер |
-| ioredis | — | Redis клиент |
-| Joi | — | Валидация входящих данных |
-| Jest + Supertest | — | Тестирование API |
-| swagger-jsdoc | — | Автогенерация OpenAPI документации |
-| node-cron | — | Напоминания о дедлайнах |
+| Python | 3.12 | Backend runtime |
+| FastAPI | — | HTTP framework (все backend-сервисы) |
+| SQLAlchemy | — | ORM для работы с PostgreSQL |
+| Alembic | — | Миграции БД |
+| python-jose | — | JWT выдача/валидация |
+| passlib | — | Хэширование паролей |
+| httpx | — | HTTP клиент для webhook и OAuth |
+| websockets | — | WebSocket сервер |
+| aiohttp | — | Асинхронный HTTP клиент/сервер |
+| pydantic | — | Валидация входящих данных |
+| pytest + httpx | — | Тестирование API |
 | PostgreSQL | 16 | Основная БД |
 | Redis | 7 Alpine | Кэш, Pub/Sub, чат, presence |
 | Nginx | alpine | API Gateway, reverse proxy |

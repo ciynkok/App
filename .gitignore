@@ -1,22 +1,50 @@
-# Dependencies
-node_modules/
-.pnp
-.pnp.js
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
 
-# Environment
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Environment variables
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+*.env
 
-# Build
-.next/
-out/
-build/
-dist/
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
 
 # Logs
+*.log
+logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -27,26 +55,30 @@ lerna-debug.log*
 coverage/
 .nyc_output/
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
+# Build artifacts
+build/
+dist/
+*.manifest
+*.spec
 
 # Docker
 *.pid
 *.seed
 *.pid.lock
 
-# Prisma
-prisma/migrations/
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Secrets
+*.pem
+*.key
+secrets/
 
 # Misc
 .cache/
 tmp/
 temp/
+*.bak
+*.orig

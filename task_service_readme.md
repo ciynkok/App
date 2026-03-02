@@ -42,37 +42,33 @@
 ```
 task-service/
 ├── Dockerfile
-├── package.json
+├── requirements.txt
 ├── .env                              # не в git
-├── prisma/
-│   ├── schema.prisma                 # Модели: Board, Column, Task, Comment, BoardMember
-│   └── migrations/                   # Автогенерируется Prisma
 ├── src/
-│   ├── index.js                      # Точка входа: Express app, Swagger, порт 3002
+│   ├── main.py                       # Точка входа: FastAPI app, Swagger, порт 3002
 │   ├── config/
-│   │   └── swagger.js                # Настройка swagger-jsdoc
+│   │   ├── database.py               # SQLAlchemy подключение
+│   │   └── swagger.py                # Настройка OpenAPI
 │   ├── routes/
-│   │   ├── boards.routes.js          # /api/boards/*
-│   │   └── tasks.routes.js           # /api/tasks/*
-│   ├── controllers/
-│   │   ├── boards.controller.js      # Логика для досок и колонок
-│   │   └── tasks.controller.js       # Логика для задач и комментариев
+│   │   ├── boards.py                 # /api/boards/*
+│   │   └── tasks.py                  # /api/tasks/*
 │   ├── middleware/
-│   │   ├── checkAuth.js              # Валидация JWT (копия из auth-service)
-│   │   └── checkRole.js              # RBAC middleware (копия из auth-service)
+│   │   └── auth.py                   # JWT валидация и RBAC
 │   ├── services/
-│   │   ├── boards.service.js         # Prisma-запросы для досок
-│   │   ├── tasks.service.js          # Prisma-запросы для задач
-│   │   ├── stats.service.js          # Расчёт данных для burn-down chart
-│   │   └── webhook.service.js        # HTTP-отправка событий в Real-time Service
-│   ├── validators/
-│   │   ├── board.validator.js        # Joi схемы для Board
-│   │   └── task.validator.js         # Joi схемы для Task
-│   ├── jobs/
-│   │   └── deadline.job.js           # node-cron: напоминания о дедлайнах
-│   └── utils/
-│       └── errors.js                 # Стандартный формат ошибок
-└── init.sql                          # DDL схемы task
+│   │   ├── boards.py                 # SQLAlchemy запросы для досок
+│   │   ├── tasks.py                  # SQLAlchemy запросы для задач
+│   │   ├── stats.py                  # Расчёт данных для burn-down chart
+│   │   └── webhook.py                # HTTP-отправка событий в Real-time Service
+│   ├── schemas/
+│   │   ├── board.py                  # Pydantic схемы для Board
+│   │   └── task.py                   # Pydantic схемы для Task
+│   ├── models/
+│   │   └── task.py                   # SQLAlchemy модели: Board, Column, Task, Comment, BoardMember
+│   └── jobs/
+│       └── deadline.py               # APScheduler: напоминания о дедлайнах
+└── alembic/                          # Миграции БД
+    ├── env.py
+    └── versions/
 ```
 
 ---
@@ -80,21 +76,22 @@ task-service/
 ## Dockerfile
 
 ```dockerfile
-FROM node:22-alpine
+FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci --only=production
+# Установка зависимостей
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN npx prisma generate
-
-EXPOSE 3002
-
-CMD ["node", "src/index.js"]
+# Миграции БД выполняются при старте контейнера
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "3002"]
 ```
+
+> Миграции Alembic можно запускать через entrypoint-скрипт или вручную:
+> `docker compose exec task alembic upgrade head`
 
 ---
 
@@ -121,102 +118,99 @@ PORT=3002
 
 Task Service использует **схему `task`** внутри общей PostgreSQL базы. Прямые JOIN с таблицами схемы `auth` запрещены — связь только через `user_id` (UUID).
 
-### Prisma schema
+### SQLAlchemy модели
 
-```prisma
-generator client {
-  provider = "prisma-client-js"
-}
+```python
+# src/models/task.py
+from sqlalchemy import Column, String, DateTime, ForeignKey, Enum, Integer, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.sql import func
+import uuid
+import enum
 
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
+Base = declarative_base()
 
-model Board {
-  id          String        @id @default(uuid()) @db.Uuid
-  title       String
-  description String?
-  ownerId     String        @map("owner_id") @db.Uuid   // UUID из auth.users — без FK
-  color       String        @default("#6366f1")
-  createdAt   DateTime      @default(now()) @map("created_at")
+class Priority(enum.Enum):
+    low = "low"
+    medium = "medium"
+    high = "high"
+    urgent = "urgent"
 
-  columns     Column[]
-  tasks       Task[]
-  members     BoardMember[]
+class Board(Base):
+    __tablename__ = "boards"
+    __table_args__ = {"schema": "task"}
 
-  @@map("boards")
-  @@schema("task")
-}
+    id = Column(UUID(as_uuid=True), primary_key=True, default=lambda: uuid.uuid4())
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    owner_id = Column(UUID(as_uuid=True), nullable=False)  # UUID из auth.users — без FK
+    color = Column(String(7), default="#6366f1")
+    created_at = Column(DateTime, default=func.now())
 
-model BoardMember {
-  boardId  String @map("board_id") @db.Uuid
-  userId   String @map("user_id") @db.Uuid              // UUID из auth.users — без FK
-  role     String @default("viewer")                    // admin | editor | viewer
+    columns = relationship("Column", back_populates="board", cascade="all, delete-orphan")
+    tasks = relationship("Task", back_populates="board", cascade="all, delete-orphan")
+    members = relationship("BoardMember", back_populates="board", cascade="all, delete-orphan")
 
-  board    Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+class BoardMember(Base):
+    __tablename__ = "board_members"
+    __table_args__ = (
+        PrimaryKeyConstraint("board_id", "user_id"),
+        {"schema": "task"}
+    )
 
-  @@id([boardId, userId])
-  @@map("board_members")
-  @@schema("task")
-}
+    board_id = Column(UUID(as_uuid=True), ForeignKey("task.boards.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), nullable=False)  # UUID из auth.users — без FK
+    role = Column(String(20), default="viewer")  # admin | editor | viewer
 
-model Column {
-  id        String   @id @default(uuid()) @db.Uuid
-  boardId   String   @map("board_id") @db.Uuid
-  title     String
-  position  Int      @default(0)
-  createdAt DateTime @default(now()) @map("created_at")
+    board = relationship("Board", back_populates="members")
 
-  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  tasks     Task[]
+class Column(Base):
+    __tablename__ = "columns"
+    __table_args__ = {"schema": "task"}
 
-  @@map("columns")
-  @@schema("task")
-}
+    id = Column(UUID(as_uuid=True), primary_key=True, default=lambda: uuid.uuid4())
+    board_id = Column(UUID(as_uuid=True), ForeignKey("task.boards.id", ondelete="CASCADE"), nullable=False)
+    title = Column(String(255), nullable=False)
+    position = Column(Integer, default=0)
+    created_at = Column(DateTime, default=func.now())
 
-model Task {
-  id          String    @id @default(uuid()) @db.Uuid
-  columnId    String    @map("column_id") @db.Uuid
-  boardId     String    @map("board_id") @db.Uuid
-  title       String
-  description String?
-  assigneeId  String?   @map("assignee_id") @db.Uuid   // UUID из auth.users — без FK
-  priority    Priority  @default(medium)
-  status      String    @default("todo")
-  deadline    DateTime?
-  position    Int       @default(0)
-  createdAt   DateTime  @default(now()) @map("created_at")
+    board = relationship("Board", back_populates="columns")
+    tasks = relationship("Task", back_populates="column", cascade="all, delete-orphan")
 
-  column      Column    @relation(fields: [columnId], references: [id], onDelete: Cascade)
-  board       Board     @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  comments    Comment[]
+class Task(Base):
+    __tablename__ = "tasks"
+    __table_args__ = {"schema": "task"}
 
-  @@map("tasks")
-  @@schema("task")
-}
+    id = Column(UUID(as_uuid=True), primary_key=True, default=lambda: uuid.uuid4())
+    column_id = Column(UUID(as_uuid=True), ForeignKey("task.columns.id", ondelete="CASCADE"), nullable=False)
+    board_id = Column(UUID(as_uuid=True), ForeignKey("task.boards.id", ondelete="CASCADE"), nullable=False)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    assignee_id = Column(UUID(as_uuid=True), nullable=True)  # UUID из auth.users — без FK
+    priority = Column(Enum(Priority), default=Priority.medium)
+    status = Column(String(50), default="todo")
+    deadline = Column(DateTime, nullable=True)
+    position = Column(Integer, default=0)
+    created_at = Column(DateTime, default=func.now())
 
-model Comment {
-  id        String   @id @default(uuid()) @db.Uuid
-  taskId    String   @map("task_id") @db.Uuid
-  authorId  String   @map("author_id") @db.Uuid         // UUID из auth.users — без FK
-  content   String
-  createdAt DateTime @default(now()) @map("created_at")
+    column = relationship("Column", back_populates="tasks")
+    board = relationship("Board", back_populates="tasks")
+    comments = relationship("Comment", back_populates="task", cascade="all, delete-orphan")
 
-  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+class Comment(Base):
+    __tablename__ = "comments"
+    __table_args__ = {"schema": "task"}
 
-  @@map("comments")
-  @@schema("task")
-}
+    id = Column(UUID(as_uuid=True), primary_key=True, default=lambda: uuid.uuid4())
+    task_id = Column(UUID(as_uuid=True), ForeignKey("task.tasks.id", ondelete="CASCADE"), nullable=False)
+    author_id = Column(UUID(as_uuid=True), nullable=False)  # UUID из auth.users — без FK
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=func.now())
 
-enum Priority {
-  low
-  medium
-  high
-  urgent
-
-  @@schema("task")
-}
+    task = relationship("Task", back_populates="comments")
+```
 ```
 
 ### init.sql (DDL)
@@ -654,37 +648,44 @@ async function moveTask(req, res) {
 
 ---
 
-## Валидация данных (Joi)
+## Валидация данных (Pydantic)
 
-```js
-// src/validators/task.validator.js
-const Joi = require('joi')
+```python
+# src/schemas/task.py
+from pydantic import BaseModel, Field, field_validator
+from typing import Optional, Literal
+from datetime import datetime
+from uuid import UUID
 
-const createTaskSchema = Joi.object({
-  columnId:    Joi.string().uuid().required(),
-  boardId:     Joi.string().uuid().required(),
-  title:       Joi.string().min(1).max(255).required(),
-  description: Joi.string().max(5000).optional().allow(''),
-  assigneeId:  Joi.string().uuid().optional(),
-  priority:    Joi.string().valid('low', 'medium', 'high', 'urgent').default('medium'),
-  deadline:    Joi.date().iso().optional(),
-})
+class TaskCreate(BaseModel):
+    column_id: UUID
+    board_id: UUID
+    title: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = Field(None, max_length=5000)
+    assignee_id: Optional[UUID] = None
+    priority: Literal["low", "medium", "high", "urgent"] = "medium"
+    deadline: Optional[datetime] = None
 
-const updateTaskSchema = Joi.object({
-  title:       Joi.string().min(1).max(255),
-  description: Joi.string().max(5000).allow(''),
-  assigneeId:  Joi.string().uuid().allow(null),
-  priority:    Joi.string().valid('low', 'medium', 'high', 'urgent'),
-  status:      Joi.string().valid('todo', 'in_progress', 'done'),
-  deadline:    Joi.date().iso().allow(null),
-}).min(1) // хотя бы одно поле
+class TaskUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = Field(None, max_length=5000)
+    assignee_id: Optional[UUID] = None
+    priority: Optional[Literal["low", "medium", "high", "urgent"]] = None
+    status: Optional[Literal["todo", "in_progress", "done"]] = None
+    deadline: Optional[datetime] = None
 
-const moveTaskSchema = Joi.object({
-  columnId: Joi.string().uuid().required(),
-  position: Joi.number().integer().min(0).required(),
-})
+class TaskMove(BaseModel):
+    column_id: UUID
+    position: int = Field(..., ge=0)
 
-module.exports = { createTaskSchema, updateTaskSchema, moveTaskSchema }
+class BoardCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    color: str = Field(default="#6366f1", pattern=r"^#[0-9A-Fa-f]{6}$")
+
+class ColumnCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    position: int = Field(default=0, ge=0)
 ```
 
 ---
@@ -693,32 +694,54 @@ module.exports = { createTaskSchema, updateTaskSchema, moveTaskSchema }
 
 Task Service **самостоятельно валидирует JWT** — без запросов к Auth Service.
 
-```js
-// src/middleware/checkAuth.js
-const jwt = require('jsonwebtoken')
+```python
+# src/middleware/auth.py
+from fastapi import HTTPException, Depends, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from jose import jwt, JWTError
+from pydantic import BaseModel
+from typing import Optional
+from uuid import UUID
+from datetime import datetime
 
-function checkAuth(req, res, next) {
-  const authHeader = req.headers.authorization
-  if (!authHeader?.startsWith('Bearer ')) {
-    return res.status(401).json({
-      error: { code: 'UNAUTHORIZED', message: 'Authorization header missing' }
-    })
-  }
+security = HTTPBearer()
 
-  const token = authHeader.split(' ')[1]
+class TokenPayload(BaseModel):
+    sub: UUID
+    role: str
+    email: str
+    jti: Optional[UUID] = None
+    exp: datetime
+    iat: datetime
 
-  try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET)
-    req.user = payload  // { sub, role, email, jti, iat, exp }
-    next()
-  } catch (err) {
-    return res.status(401).json({
-      error: { code: 'UNAUTHORIZED', message: 'Token is invalid or expired' }
-    })
-  }
-}
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+) -> TokenPayload:
+    token = credentials.credentials
+    
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET,
+            algorithms=[settings.JWT_ALGORITHM],
+            options={"verify_exp": True}
+        )
+        return TokenPayload(**payload)
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": {"code": "UNAUTHORIZED", "message": "Token is invalid or expired"}}
+        )
 
-module.exports = { checkAuth }
+def check_role(*allowed_roles: str):
+    async def role_checker(current_user: TokenPayload = Depends(get_current_user)):
+        if current_user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"error": {"code": "FORBIDDEN", "message": "Insufficient permissions"}}
+            )
+        return current_user
+    return role_checker
 ```
 
 **Важно:** Task Service не проверяет Redis blacklist — это зона ответственности Auth Service. При `logout` старые токены технически валидны до истечения TTL (1 час). Для критичных операций можно добавить проверку blacklist.
@@ -727,33 +750,23 @@ module.exports = { checkAuth }
 
 ## Swagger / OpenAPI документация
 
-```js
-// src/config/swagger.js
-const swaggerJsdoc = require('swagger-jsdoc')
+FastAPI автоматически генерирует OpenAPI документацию и Swagger UI.
 
-const options = {
-  definition: {
-    openapi: '3.0.0',
-    info: {
-      title: 'Task Service API',
-      version: '1.0.0',
-      description: 'REST API для управления досками, задачами и комментариями',
-    },
-    components: {
-      securitySchemes: {
-        bearerAuth: {
-          type: 'http',
-          scheme: 'bearer',
-          bearerFormat: 'JWT',
-        }
-      }
-    },
-    security: [{ bearerAuth: [] }],
-  },
-  apis: ['./src/routes/*.js'],  // JSDoc аннотации в файлах роутов
-}
+```python
+# src/main.py
+from fastapi import FastAPI
+from fastapi.openapi.docs import get_swagger_ui_html
 
-module.exports = swaggerJsdoc(options)
+app = FastAPI(
+    title="Task Service API",
+    description="REST API для управления досками, задачами и комментариями",
+    version="1.0.0",
+    openapi_url="/api/openapi.json",
+    docs_url="/api/docs",
+)
+
+# Все роутеры автоматически включаются в документацию
+# благодаря аннотациям Pydantic и FastAPI Depends
 ```
 
 Swagger UI доступен на `GET /api/docs` — является **официальным контрактом** для Frontend разработчика.
@@ -764,49 +777,39 @@ Swagger UI доступен на `GET /api/docs` — является **офиц
 
 ```
 task-service/
-└── src/
-    └── __tests__/
-        ├── boards.test.js     # Integration тесты для /api/boards
-        ├── tasks.test.js      # Integration тесты для /api/tasks
-        └── stats.test.js      # Unit тесты для stats.service.js
+└── tests/
+    ├── test_boards.py         # Integration тесты для /api/boards
+    ├── test_tasks.py          # Integration тесты для /api/tasks
+    └── test_stats.py          # Unit тесты для stats.py
 ```
 
 ```bash
 # Запуск тестов
-npm test
+pytest
 
 # С отчётом покрытия (цель: > 70%)
-npm run test:coverage
+pytest --cov=src --cov-report=html
 ```
 
-**Stack:** Jest + Supertest. Тесты используют отдельную тестовую БД или мокируют Prisma Client.
+**Stack:** pytest + httpx. Тесты используют отдельную тестовую БД или мокируют SQLAlchemy сессии.
 
 ---
 
-## Зависимости (npm)
+## Зависимости (requirements.txt)
 
-```json
-{
-  "dependencies": {
-    "express": "^4.18.0",
-    "@prisma/client": "^5.0.0",
-    "jsonwebtoken": "^9.0.0",
-    "joi": "^17.9.0",
-    "axios": "^1.6.0",
-    "swagger-jsdoc": "^6.2.0",
-    "swagger-ui-express": "^5.0.0",
-    "node-cron": "^3.0.0",
-    "cors": "^2.8.5",
-    "helmet": "^7.0.0",
-    "dotenv": "^16.0.0"
-  },
-  "devDependencies": {
-    "prisma": "^5.0.0",
-    "jest": "^29.0.0",
-    "supertest": "^6.3.0",
-    "nodemon": "^3.0.0"
-  }
-}
+```txt
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+sqlalchemy==2.0.25
+alembic==1.13.1
+psycopg2-binary==2.9.9
+python-jose[cryptography]==3.3.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+httpx==0.26.0
+aioredis==2.0.1
+apscheduler==3.10.4
+python-multipart==0.0.6
 ```
 
 ---
