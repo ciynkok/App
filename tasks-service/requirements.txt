@@ -6,6 +6,7 @@ python-multipart==0.0.6
 # База данных
 sqlalchemy[asyncio]==2.0.25
 asyncpg==0.29.0
+aiosqlite==0.19.0
 alembic==1.13.1
 
 # Валидация
@@ -19,6 +20,9 @@ aioredis==2.0.1
 # HTTP клиент
 httpx==0.26.0
 requests==2.31.0
+
+# Планировщик задач
+apscheduler==3.10.4
 
 # Тесты
 pytest==7.4.4
