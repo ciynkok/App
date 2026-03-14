@@ -9,7 +9,7 @@ from src.models import Base
 
 # Create async engine
 engine = create_async_engine(
-    settings.database_url,
+    settings.task_database_url,
     echo=settings.debug,
     future=True,
 )

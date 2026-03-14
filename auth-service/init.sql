@@ -1,6 +1,9 @@
 -- Auth Schema Initialization
 -- Схема для сервиса аутентификации
 
+-- Подключение к базе данных auth_db
+\c auth_db
+
 CREATE SCHEMA IF NOT EXISTS auth;
 
 -- Пользователи

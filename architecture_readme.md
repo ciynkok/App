@@ -123,9 +123,9 @@ collab-dashboard/
    │  PostgreSQL 16  │     │   Redis 7       │
    │    порт 5432    │     │   порт 6379     │
    │                 │     │                 │
-   │ schema: auth    │     │ JWT blacklist   │
-   │ schema: task    │     │ Chat history    │
-   │                 │     │ Online users    │
+   │ auth_db         │     │ Chat history    │
+   │ task_db         │     │ Online users    │
+   │                 │     │ Pub/Sub         │
    └─────────────────┘     └─────────────────┘
 ```
 
@@ -136,6 +136,9 @@ collab-dashboard/
 - Frontend → Auth Service: REST через Nginx (`/auth/*`)
 - Frontend → Task Service: REST через Nginx (`/api/*`)
 - Frontend → Real-time Service: WebSocket через Nginx (`/ws`)
+- **Auth Service** использует свою БД: `auth_db`
+- **Task Service** использует свою БД: `task_db`
+- **Real-time Service** использует **Redis** (без PostgreSQL)
 
 ---
 
@@ -160,109 +163,59 @@ postgres, redis → auth → task, realtime → frontend → nginx
 
 ## База данных
 
-PostgreSQL использует **две отдельные схемы**, исключая прямые JOIN между сервисами.
+Каждый сервис использует **отдельную базу данных** PostgreSQL. Прямые JOIN между сервисами невозможны — связь только через `user_id` (UUID).
 
-### Схема `auth` (владелец: Auth Service)
+### База данных `auth_db` (владелец: Auth Service)
 
 ```sql
-CREATE SCHEMA auth;
-
 -- Пользователи
-CREATE TABLE auth.users (
+CREATE TABLE users (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email       VARCHAR(255) NOT NULL,
-    password_hash VARCHAR(255),           -- NULL для OAuth-only пользователей
+    password_hash VARCHAR(255),
     name        VARCHAR(255) NOT NULL,
     avatar_url  TEXT,
-    role        VARCHAR(20) NOT NULL DEFAULT 'viewer'
-                CHECK (role IN ('admin', 'editor', 'viewer')),
     created_at  TIMESTAMPTZ DEFAULT NOW(),
     updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE UNIQUE INDEX ON auth.users(email);
-
--- Refresh токены
-CREATE TABLE auth.refresh_tokens (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id     UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    token_hash  VARCHAR(255) NOT NULL,
-    expires_at  TIMESTAMPTZ NOT NULL,
-    revoked     BOOLEAN DEFAULT FALSE,
-    created_at  TIMESTAMPTZ DEFAULT NOW()
-);
-
--- OAuth аккаунты
-CREATE TABLE auth.oauth_accounts (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id     UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    provider    VARCHAR(20) NOT NULL CHECK (provider IN ('google', 'github')),
-    provider_id VARCHAR(255) NOT NULL,
-    access_token TEXT
-);
-CREATE UNIQUE INDEX ON auth.oauth_accounts(provider, provider_id);
 ```
 
-### Схема `task` (владелец: Task Service)
+### База данных `task_db` (владелец: Task Service)
 
 ```sql
-CREATE SCHEMA task;
-
 -- Доски
-CREATE TABLE task.boards (
+CREATE TABLE boards (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title       VARCHAR(255) NOT NULL,
     description TEXT,
-    owner_id    UUID NOT NULL,            -- ссылка на auth.users.id (без FK через схемы)
+    owner_id    UUID NOT NULL,            -- ссылка на auth.users.id (без FK)
     color       VARCHAR(7) DEFAULT '#6366f1',
     created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Участники досок
-CREATE TABLE task.board_members (
-    board_id    UUID NOT NULL REFERENCES task.boards(id) ON DELETE CASCADE,
-    user_id     UUID NOT NULL,            -- ссылка на auth.users.id
-    role        VARCHAR(20) NOT NULL DEFAULT 'viewer'
-                CHECK (role IN ('admin', 'editor', 'viewer')),
-    PRIMARY KEY (board_id, user_id)
-);
-
--- Колонки (списки Kanban)
-CREATE TABLE task.columns (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    board_id    UUID NOT NULL REFERENCES task.boards(id) ON DELETE CASCADE,
-    title       VARCHAR(255) NOT NULL,
-    position    INT NOT NULL DEFAULT 0,
-    created_at  TIMESTAMPTZ DEFAULT NOW()
-);
-
 -- Задачи
-CREATE TABLE task.tasks (
+CREATE TABLE tasks (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    column_id   UUID NOT NULL REFERENCES task.columns(id) ON DELETE CASCADE,
-    board_id    UUID NOT NULL REFERENCES task.boards(id) ON DELETE CASCADE,
+    column_id   UUID NOT NULL REFERENCES columns(id) ON DELETE CASCADE,
+    board_id    UUID NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
     title       VARCHAR(255) NOT NULL,
     description TEXT,
     assignee_id UUID,                     -- ссылка на auth.users.id
-    priority    VARCHAR(10) DEFAULT 'medium'
-                CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+    priority    VARCHAR(10) DEFAULT 'medium',
     status      VARCHAR(20) DEFAULT 'todo',
     deadline    TIMESTAMPTZ,
     position    INT NOT NULL DEFAULT 0,
     created_at  TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX ON task.tasks(board_id);
-CREATE INDEX ON task.tasks(column_id);
-CREATE INDEX ON task.tasks(assignee_id);
 
 -- Комментарии
-CREATE TABLE task.comments (
+CREATE TABLE comments (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    task_id     UUID NOT NULL REFERENCES task.tasks(id) ON DELETE CASCADE,
-    author_id   UUID NOT NULL,            -- ссылка на auth.users.id
+    task_id     UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    author_id   UUID NOT NULL,
     content     TEXT NOT NULL,
     created_at  TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX ON task.comments(task_id);
 ```
 
 ---
@@ -690,7 +643,20 @@ docker compose down -v
 ```
 Authorization: Bearer <access_token>
 ```
-Task Service и Real-time Service **самостоятельно валидируют** JWT через `JWT_SECRET` — они не делают запросов к Auth Service на каждый запрос.
+Task Service и Real-time Service **валидируют JWT локально** через общий `JWT_SECRET`.
+
+**JWT payload:**
+```json
+{
+  "sub": "uuid-v4-user-id",
+  "email": "user@example.com",
+  "jti": "unique-token-id",
+  "iat": 1700000000,
+  "exp": 1700003600
+}
+```
+
+**Важно:** Все сервисы используют **один `JWT_SECRET`** из корневого `.env` проекта.
 
 ### 3. Webhook от Task Service к Real-time Service
 При любом CRUD-действии над задачей Task Service отправляет:

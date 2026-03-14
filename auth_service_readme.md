@@ -24,14 +24,15 @@
 ## Обязанности сервиса
 
 - Регистрация и логин пользователей (email + password)
-- OAuth2 через Google и GitHub (Authlib)
+- OAuth2 через Google и GitHub
 - Выдача `access_token` (JWT, TTL: 1h) и `refresh_token` (TTL: 30d)
 - Валидация и инвалидация токенов (Redis blacklist)
-- Хранение и управление ролями: `admin`, `editor`, `viewer`
-- Middleware для проверки JWT и ролей
+- Хранение пользователей
 
 **Порт:** `3001`
 **Внутренний хост в Docker-сети:** `auth`
+
+> **Важно:** Task Service и Real-time Service валидируют JWT **локально** через общий `JWT_SECRET`. Auth Service не участвует в проверке токенов на каждый запрос.
 
 ---
 
@@ -582,18 +583,18 @@ authlib==1.3.0
 ```
 Auth Service  ─────────────────────────────────────────────────────────
      │
-     │  Выдаёт JWT с payload: { sub, role, email, jti }
+     │  Выдаёт JWT с payload: { sub, email, jti }
      │
      ▼
 Task Service (порт 3002)        — валидирует JWT самостоятельно через JWT_SECRET
 Real-time Service (порт 3003)   — валидирует JWT самостоятельно через JWT_SECRET
-Frontend (порт 3000)            — получает токены, хранит в httpOnly cookie или localStorage
+Frontend (порт 3000)            — получает токены, хранит в cookie или localStorage
 ```
 
 **Auth Service НЕ получает запросы от других сервисов в рантайме.**
 Остальные сервисы валидируют токены локально, используя общий `JWT_SECRET`.
 
-Единственная зависимость: все сервисы должны иметь **одинаковое значение `JWT_SECRET`** в своих `.env`.
+**Важно:** Все сервисы должны иметь **одинаковое значение `JWT_SECRET`** в своих `.env` (берётся из корневого `.env` проекта).
 
 ---
 

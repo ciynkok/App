@@ -1,16 +1,10 @@
 import uuid
 import enum
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, ForeignKey, Enum, Boolean, Text, func
+from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from src.config.database import Base
-
-
-class Role(enum.Enum):
-    admin = "admin"
-    editor = "editor"
-    viewer = "viewer"
 
 
 class Provider(enum.Enum):
@@ -27,7 +21,6 @@ class User(Base):
     password_hash = Column(String(255), nullable=True)
     name = Column(String(255), nullable=False)
     avatar_url = Column(Text, nullable=True)
-    role = Column(Enum(Role), nullable=False, default=Role.viewer)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 

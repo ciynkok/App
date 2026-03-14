@@ -88,7 +88,6 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
             email=user.email,
             name=user.name,
             avatar_url=user.avatar_url,
-            role=user.role,
         ),
     )
 
@@ -137,7 +136,6 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
             email=user.email,
             name=user.name,
             avatar_url=user.avatar_url,
-            role=user.role,
         ),
     )
 
@@ -162,7 +160,6 @@ async def get_me(
         email=db_user.email,
         name=db_user.name,
         avatar_url=db_user.avatar_url,
-        role=db_user.role,
     )
 
 

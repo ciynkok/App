@@ -692,59 +692,69 @@ class ColumnCreate(BaseModel):
 
 ## Аутентификация и авторизация
 
-Task Service **самостоятельно валидирует JWT** — без запросов к Auth Service.
+Task Service **валидирует JWT через Auth Service** — делает HTTP-запрос на endpoint `/auth/verify` для каждого запроса.
 
 ```python
-# src/middleware/auth.py
+# src/middleware.py
 from fastapi import HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import jwt, JWTError
-from pydantic import BaseModel
-from typing import Optional
-from uuid import UUID
-from datetime import datetime
+import httpx
+from src.config import settings
 
 security = HTTPBearer()
 
-class TokenPayload(BaseModel):
-    sub: UUID
-    role: str
-    email: str
-    jti: Optional[UUID] = None
-    exp: datetime
-    iat: datetime
+async def verify_jwt_with_auth_service(token: str) -> dict:
+    """
+    Проверка JWT токена через Auth Service.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                f"{settings.auth_service_url}{settings.auth_service_verify_endpoint}",
+                headers={"Authorization": f"Bearer {token}"}
+            )
+
+            if response.status_code == status.HTTP_200_OK:
+                return response.json()
+            elif response.status_code == status.HTTP_401_UNAUTHORIZED:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail={"error": {"code": "INVALID_TOKEN", "message": "Invalid or expired token"}}
+                )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail={"error": {"code": "AUTH_SERVICE_ERROR", "message": "Auth service unavailable"}}
+                )
+    except httpx.RequestError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"error": {"code": "AUTH_SERVICE_ERROR", "message": "Failed to connect to Auth Service"}}
+        )
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security)
-) -> TokenPayload:
+) -> dict:
     token = credentials.credentials
-    
-    try:
-        payload = jwt.decode(
-            token,
-            settings.JWT_SECRET,
-            algorithms=[settings.JWT_ALGORITHM],
-            options={"verify_exp": True}
-        )
-        return TokenPayload(**payload)
-    except JWTError:
+    user_info = await verify_jwt_with_auth_service(token)
+
+    if not user_info or "user_id" not in user_info:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": {"code": "UNAUTHORIZED", "message": "Token is invalid or expired"}}
+            detail={"error": {"code": "INVALID_TOKEN", "message": "Invalid token payload"}}
         )
 
-def check_role(*allowed_roles: str):
-    async def role_checker(current_user: TokenPayload = Depends(get_current_user)):
-        if current_user.role not in allowed_roles:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={"error": {"code": "FORBIDDEN", "message": "Insufficient permissions"}}
-            )
-        return current_user
-    return role_checker
+    return user_info
 ```
 
-**Важно:** Task Service не проверяет Redis blacklist — это зона ответственности Auth Service. При `logout` старые токены технически валидны до истечения TTL (1 час). Для критичных операций можно добавить проверку blacklist.
+**Преимущества централизованной валидации:**
+- ✅ Auth Service проверяет **Redis blacklist** — токены отозванные при logout сразу становятся невалидными
+- ✅ Централизованное управление сессиями
+- ✅ Единая точка для обновления алгоритмов валидации
+
+**Недостатки:**
+- ⚠️ Дополнительный сетевой вызов на каждый запрос (небольшая задержка)
+- ⚠️ Нагрузка на Auth Service
 
 ---
 
@@ -822,13 +832,13 @@ python-multipart==0.0.6
                     │          порт 3002           │
                     └──────┬──────────────┬────────┘
                            │              │
-          Валидирует JWT    │              │  HTTP POST webhook
-          самостоятельно   │              │  /internal/events
-          (JWT_SECRET)      │              │
+          HTTP POST        │              │  HTTP POST webhook
+          /auth/verify     │              │  /internal/events
+          (валидация JWT)  │              │
                            ▼              ▼
               ┌──────────────────┐   ┌────────────────────┐
               │   Auth Service   │   │  Realtime Service  │
-              │   (не вызывает)  │   │     порт 3003      │
+              │   порт 3001      │   │     порт 3003      │
               └──────────────────┘   └────────────────────┘
                            ▲
                            │  REST API: /api/*
@@ -841,8 +851,10 @@ python-multipart==0.0.6
                     └─────────────────────────────┘
 ```
 
-**Task Service НЕ обращается к Auth Service в рантайме.**
-JWT валидируется локально через `JWT_SECRET`.
+**Task Service обращается к Auth Service для валидации JWT:**
+- Каждый запрос с JWT проверяется через `POST /auth/verify`
+- Auth Service проверяет токен и Redis blacklist
+- При logout токены сразу становятся невалидными
 
 **Task Service ВСЕГДА уведомляет Real-time Service** через webhook после успешного изменения данных. Если Real-time Service недоступен — ошибка логируется, основной запрос завершается успешно.
 

@@ -4,12 +4,6 @@ from datetime import datetime
 from enum import Enum
 
 
-class Role(str, Enum):
-    admin = "admin"
-    editor = "editor"
-    viewer = "viewer"
-
-
 class Provider(str, Enum):
     google = "google"
     github = "github"
@@ -37,7 +31,6 @@ class UserResponse(BaseModel):
     email: str
     name: str
     avatar_url: Optional[str] = None
-    role: Role
 
     class Config:
         from_attributes = True

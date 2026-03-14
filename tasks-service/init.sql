@@ -1,6 +1,9 @@
 -- Task Schema Initialization
 -- Схема для сервиса задач
 
+-- Подключение к базе данных task_db
+\c task_db
+
 CREATE SCHEMA IF NOT EXISTS task;
 
 -- Доски

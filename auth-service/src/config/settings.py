@@ -16,7 +16,7 @@ env_file = str(ROOT_ENV if ROOT_ENV.exists() else SERVICE_ENV)
 
 class Settings(BaseSettings):
     # PostgreSQL
-    DATABASE_URL: str
+    AUTH_DATABASE_URL: str
 
     # Redis
     REDIS_URL: str

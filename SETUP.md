@@ -11,18 +11,28 @@
 git clone <repo-url>
 cd App
 
-# 2. Создать .env из шаблона
-cp .env.example .env
+# 2. Сгенерировать .env автоматически
+python scripts/generate_env.py
 
-# 3. Заполнить .env (см. ниже)
-
-# 4. Запустить весь стек
+# 3. Запустить весь стек
 docker compose up --build
 ```
 
 ---
 
 ## 📝 Настройка .env файла
+
+### Автоматическая генерация (рекомендуется)
+
+```bash
+python scripts/generate_env.py
+```
+
+Скрипт создаст `.env` файл с безопасными случайными секретами.
+
+---
+
+### Ручная настройка
 
 Скопируйте `.env.example` в `.env` и заполните переменные:
 
@@ -158,6 +168,18 @@ NODE_ENV=development
 
 ## 🔒 Генерация секретных ключей
 
+### Автоматически (рекомендуется)
+
+```bash
+python scripts/generate_env.py
+```
+
+Скрипт сгенерирует все необходимые секреты автоматически.
+
+---
+
+### Вручную
+
 ### JWT_SECRET (мин. 32 символа)
 
 ```bash
@@ -169,6 +191,9 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 # PowerShell
 [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Minimum 0 -Maximum 256 }))
+
+# Python
+python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
 **Пример:** `a3f8b2c1d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6`

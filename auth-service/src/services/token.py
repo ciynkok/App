@@ -3,7 +3,7 @@ import hashlib
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
 from src.config.settings import settings
-from src.models.user import User, Role
+from src.models.user import User
 
 
 def create_access_token(user: User) -> str:
@@ -14,7 +14,6 @@ def create_access_token(user: User) -> str:
 
     payload = {
         "sub": str(user.id),
-        "role": user.role.value,
         "email": user.email,
         "jti": jti,
         "iat": now,

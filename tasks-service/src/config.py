@@ -17,20 +17,20 @@ class Settings(BaseSettings):
     # Server
     host: str = "0.0.0.0"
     port: int = 3002
-    
+
     # Database
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/taskdb"
-    
+    task_database_url: str
+
     # Auth Service
     auth_service_url: str = "http://auth-service:3001"
-    auth_service_verify_endpoint: str = "/api/auth/verify"
-    
+    auth_service_verify_endpoint: str = "/auth/verify"
+
     # Real-time Service
     realtime_service_url: str = "http://realtime-service:3003"
     realtime_webhook_endpoint: str = "/api/webhooks/task-events"
-    
-    # JWT
-    jwt_secret_key: str = "your-secret-key-change-in-production"
+
+    # JWT (общий с auth-service)
+    jwt_secret_key: str
     jwt_algorithm: str = "HS256"
     
     # CORS
