@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from src.models.user import User, OAuthAccount, Provider, Role
+from src.models.user import User, OAuthAccount, Provider
 from src.services.token import hash_token
 import hashlib
 
@@ -26,14 +26,12 @@ async def create_user(
     email: str,
     password_hash: str,
     name: str,
-    role: Role = Role.viewer,
 ) -> User:
     """Создание нового пользователя"""
     user = User(
         email=email,
         password_hash=password_hash,
         name=name,
-        role=role,
     )
     session.add(user)
     await session.flush()
@@ -109,7 +107,6 @@ async def find_or_create_oauth_user(
         password_hash=None,  # OAuth пользователи не имеют пароля
         name=name,
         avatar_url=avatar_url,
-        role=Role.viewer,
     )
     session.add(user)
     await session.flush()

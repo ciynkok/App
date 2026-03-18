@@ -15,7 +15,7 @@ python scripts/generate_env.py
 
 1. Копирует `.env.example` в `.env`
 2. Генерирует случайные секреты:
-   - `JWT_SECRET` (32 символа)
+   - `JWT_SECRET_KEY` (32 символа)
    - `REFRESH_TOKEN_SECRET` (32 символа)
    - `POSTGRES_PASSWORD` (16 символов)
 3. Сохраняет в корень проекта
@@ -29,7 +29,7 @@ python scripts/generate_env.py
 - name: Deploy
   run: docker-compose up -d
   env:
-    JWT_SECRET: ${{ secrets.JWT_SECRET }}
+    JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
     DATABASE_URL: ${{ secrets.DATABASE_URL }}
 ```
 

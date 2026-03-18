@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -50,60 +48,61 @@ services:
     networks:
       - app-network
 
-  task:
-    build: ./tasks-service
-    ports:
-      - "3002:3002"
-    env_file: .env
-    depends_on:
-      postgres:
-        condition: service_healthy
-      auth:
-        condition: service_started
-    restart: unless-stopped
-    networks:
-      - app-network
+  #task:
+    #build: ./tasks-service
+    #ports:
+      #- "3002:3002"
+    #env_file: .env
+    #depends_on:
+      #postgres:
+        #condition: service_healthy
+      #auth:
+        #condition: service_started
+    #restart: unless-stopped
+    #networks:
+      #- app-network
 
-  realtime:
-    build: ./realtime-service
-    ports:
-      - "3003:3003"
-    env_file: .env
-    depends_on:
-      redis:
-        condition: service_healthy
-      auth:
-        condition: service_started
-    restart: unless-stopped
-    networks:
-      - app-network
 
-  frontend:
-    build: ./frontend
-    ports:
-      - "3000:3000"
-    env_file: .env
-    depends_on:
-      - auth
-      - task
-      - realtime
-    restart: unless-stopped
-    networks:
-      - app-network
+  #realtime:
+   # build: ./realtime-service
+    #ports:
+     # - "3003:3003"
+    #env_file: .env
+    #depends_on:
+     # redis:
+      #  condition: service_healthy
+      #auth:
+       # condition: service_started
+    #restart: unless-stopped
+    #networks:
+      #- app-network
 
-  nginx:
-    build: ./nginx
-    ports:
-      - "80:80"
-      - "443:443"
-    depends_on:
-      - frontend
-      - auth
-      - task
-      - realtime
-    restart: unless-stopped
-    networks:
-      - app-network
+  # frontend:
+  #   build: ./frontend
+  #   ports:
+  #     - "3000:3000"
+  #   env_file: .env
+  #   depends_on:
+  #     - auth
+  #     - task
+  #     - realtime
+  #   restart: unless-stopped
+  #   networks:
+  #     - app-network
+
+  # nginx:
+  #   build: ./nginx
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   depends_on:
+  #     - frontend
+  #     - auth
+  #     - task
+  #     - realtime
+  #   restart: unless-stopped
+  #   networks:
+  #     - app-network
 
 volumes:
   pgdata:

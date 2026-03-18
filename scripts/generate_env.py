@@ -50,8 +50,8 @@ def generate_secrets(env_vars: dict[str, str]) -> dict[str, str]:
     """Generate secure secrets for sensitive variables."""
 
     # JWT secrets
-    if "JWT_SECRET" in env_vars:
-        env_vars["JWT_SECRET"] = generate_secret(32)
+    if "JWT_SECRET_KEY" in env_vars:
+        env_vars["JWT_SECRET_KEY"] = generate_secret(32)
 
     if "REFRESH_TOKEN_SECRET" in env_vars:
         env_vars["REFRESH_TOKEN_SECRET"] = generate_secret(32)
@@ -91,8 +91,8 @@ def write_env_file(env_vars: dict[str, str]) -> Path:
         
         # Write secrets first
         f.write("# ─── Secrets ────────────────────────────────────────────\n")
-        if "JWT_SECRET" in env_vars:
-            f.write(f"JWT_SECRET={env_vars['JWT_SECRET']}\n")
+        if "JWT_SECRET_KEY" in env_vars:
+            f.write(f"JWT_SECRET_KEY={env_vars['JWT_SECRET_KEY']}\n")
         if "REFRESH_TOKEN_SECRET" in env_vars:
             f.write(f"REFRESH_TOKEN_SECRET={env_vars['REFRESH_TOKEN_SECRET']}\n")
         if "POSTGRES_PASSWORD" in env_vars:
@@ -103,7 +103,7 @@ def write_env_file(env_vars: dict[str, str]) -> Path:
         # Write other variables
         f.write("# ─── Configuration ──────────────────────────────────────\n")
         for key, value in env_vars.items():
-            if key not in ["JWT_SECRET", "REFRESH_TOKEN_SECRET", "POSTGRES_PASSWORD"]:
+            if key not in ["JWT_SECRET_KEY", "REFRESH_TOKEN_SECRET", "POSTGRES_PASSWORD"]:
                 f.write(f"{key}={value}\n")
     
     return env_file
@@ -125,7 +125,7 @@ def main():
         # Generate secrets
         print("🔐 Generating secure secrets...")
         env_vars = generate_secrets(env_vars)
-        print("   ✓ JWT_SECRET generated")
+        print("   ✓ JWT_SECRET_KEY generated")
         print("   ✓ REFRESH_TOKEN_SECRET generated")
         print("   ✓ POSTGRES_PASSWORD generated")
         

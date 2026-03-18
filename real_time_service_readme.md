@@ -93,8 +93,8 @@ CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "3003"]
 # Redis
 REDIS_URL=redis://redis:6379
 
-# JWT (должен совпадать с JWT_SECRET в auth-service и task-service)
-JWT_SECRET=your-super-secret-jwt-key-min-32-chars
+# JWT (должен совпадать с JWT_SECRET_KEY в auth-service и task-service)
+JWT_SECRET_KEY=your-super-secret-jwt-key-min-32-chars
 
 # Общие
 NODE_ENV=development
@@ -197,7 +197,7 @@ async def websocket_endpoint(websocket: WebSocket):
     # JWT-аутентификация при подключении
     try:
         token = websocket.query_params.get("token")
-        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
         websocket.user = {
             "id": payload["sub"],
             "role": payload["role"],
@@ -358,7 +358,7 @@ function socketAuth(socket, next) {
   }
 
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET)
+    const payload = jwt.verify(token, process.env.JWT_SECRET_KEY)
     // Прикрепить данные пользователя к socket — доступны в handlers
     socket.user = {
       id: payload.sub,
@@ -652,7 +652,7 @@ python-multipart==0.0.6
        │                   │                  │
        │ JWT валидация      │ HTTP POST        │ WebSocket
        │ (самостоятельно,   │ /internal/events │ emit/broadcast
-       │  JWT_SECRET)       │                  │
+       │  JWT_SECRET_KEY)   │                  │
        │                   │                  │
        ▼                   ▼                  ▼
 ┌────────────┐   ┌──────────────────┐   ┌────────────────────┐

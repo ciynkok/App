@@ -30,9 +30,9 @@ class Settings(BaseSettings):
     realtime_webhook_endpoint: str = "/api/webhooks/task-events"
 
     # JWT (общий с auth-service)
-    jwt_secret_key: str
-    jwt_algorithm: str = "HS256"
-    
+    JWT_SECRET_KEY: str
+    JWT_ALGORITHM: str = "HS256"
+
     # CORS
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
     

@@ -53,7 +53,7 @@ cp .env.example .env
 | `POSTGRES_DB` | `collab` | Имя базы данных |
 | `DATABASE_URL` | `postgresql://postgres:secret123@postgres:5432/collab` | Connection string к БД |
 | `REDIS_URL` | `redis://redis:6379` | Connection string к Redis |
-| `JWT_SECRET` | `min-32-char-secret-key-here` | Секрет для JWT (мин. 32 символа) |
+| `JWT_SECRET_KEY` | `min-32-char-secret-key-here` | Секрет для JWT (мин. 32 символа) |
 | `JWT_EXPIRES_IN` | `1h` | Время жизни access token |
 | `REFRESH_TOKEN_SECRET` | `another-secret-key-32-chars` | Секрет для refresh token |
 | `REFRESH_TOKEN_EXPIRES_IN` | `30d` | Время жизни refresh token |
@@ -135,7 +135,7 @@ DATABASE_URL=postgresql://postgres:secret123@postgres:5432/collab
 REDIS_URL=redis://redis:6379
 
 # ─── Auth Service ─────────────────────────────────────
-JWT_SECRET=your-super-secret-jwt-key-min-32-chars-here
+JWT_SECRET_KEY=your-super-secret-jwt-key-min-32-chars-here
 JWT_EXPIRES_IN=1h
 REFRESH_TOKEN_SECRET=your-refresh-token-secret-key-32-chars
 REFRESH_TOKEN_EXPIRES_IN=30d
@@ -180,7 +180,7 @@ python scripts/generate_env.py
 
 ### Вручную
 
-### JWT_SECRET (мин. 32 символа)
+### JWT_SECRET_KEY (мин. 32 символа)
 
 ```bash
 # Linux/Mac
@@ -258,7 +258,7 @@ docker compose up --build
 
 ---
 
-### Ошибка: "JWT_SECRET is too short"
+### Ошибка: "JWT_SECRET_KEY is too short"
 
 **Причина:** Секрет меньше 32 символов.
 

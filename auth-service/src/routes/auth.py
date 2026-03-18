@@ -15,7 +15,7 @@ from src.services.user import (
     create_user,
     find_or_create_oauth_user,
 )
-from src.models.user import Provider, Role
+from src.models.user import Provider
 from src.schemas.auth import (
     RegisterRequest,
     LoginRequest,

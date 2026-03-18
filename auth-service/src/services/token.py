@@ -20,7 +20,7 @@ def create_access_token(user: User) -> str:
         "exp": now + expires_delta,
     }
 
-    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
 def create_refresh_token(user: User) -> str:
@@ -44,7 +44,7 @@ def verify_access_token(token: str) -> dict:
     """Проверка JWT access токена"""
     try:
         payload = jwt.decode(
-            token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
+            token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
         )
         return payload
     except JWTError:

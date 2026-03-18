@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     REDIS_URL: str
 
     # JWT
-    JWT_SECRET: str
+    JWT_SECRET_KEY: str
     JWT_EXPIRES_IN: str = "1h"
     JWT_ALGORITHM: str = "HS256"
 

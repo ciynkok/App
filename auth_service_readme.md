@@ -32,7 +32,7 @@
 **Порт:** `3001`
 **Внутренний хост в Docker-сети:** `auth`
 
-> **Важно:** Task Service и Real-time Service валидируют JWT **локально** через общий `JWT_SECRET`. Auth Service не участвует в проверке токенов на каждый запрос.
+> **Важно:** Task Service и Real-time Service валидируют JWT **локально** через общий `JWT_SECRET_KEY`. Auth Service не участвует в проверке токенов на каждый запрос.
 
 ---
 
@@ -98,7 +98,7 @@ DATABASE_URL=postgresql://postgres:secret@postgres:5432/collab
 REDIS_URL=redis://redis:6379
 
 # JWT
-JWT_SECRET=your-super-secret-jwt-key-min-32-chars
+JWT_SECRET_KEY=your-super-secret-jwt-key-min-32-chars
 JWT_EXPIRES_IN=1h
 
 # Refresh Token
@@ -419,7 +419,7 @@ Callback после авторизации через GitHub.
 | `iat` | timestamp | Время выдачи |
 | `exp` | timestamp | Время истечения (iat + 1h) |
 
-**Подпись:** `HS256` с `JWT_SECRET`
+**Подпись:** `HS256` с `JWT_SECRET_KEY`
 
 ---
 
@@ -467,7 +467,7 @@ router.delete('/api/tasks/:id', checkAuth, checkRole('admin'), deleteTask)
 ```
 
 > Task Service и Real-time Service **копируют** `checkAuth.js` и `checkRole.js` к себе.
-> Они валидируют JWT самостоятельно через `JWT_SECRET` из своего `.env` — без запросов к Auth Service.
+> Они валидируют JWT самостоятельно через `JWT_SECRET_KEY` из своего `.env` — без запросов к Auth Service.
 
 ---
 
@@ -586,15 +586,15 @@ Auth Service  ──────────────────────
      │  Выдаёт JWT с payload: { sub, email, jti }
      │
      ▼
-Task Service (порт 3002)        — валидирует JWT самостоятельно через JWT_SECRET
-Real-time Service (порт 3003)   — валидирует JWT самостоятельно через JWT_SECRET
+Task Service (порт 3002)        — валидирует JWT самостоятельно через JWT_SECRET_KEY
+Real-time Service (порт 3003)   — валидирует JWT самостоятельно через JWT_SECRET_KEY
 Frontend (порт 3000)            — получает токены, хранит в cookie или localStorage
 ```
 
 **Auth Service НЕ получает запросы от других сервисов в рантайме.**
-Остальные сервисы валидируют токены локально, используя общий `JWT_SECRET`.
+Остальные сервисы валидируют токены локально, используя общий `JWT_SECRET_KEY`.
 
-**Важно:** Все сервисы должны иметь **одинаковое значение `JWT_SECRET`** в своих `.env` (берётся из корневого `.env` проекта).
+**Важно:** Все сервисы должны иметь **одинаковое значение `JWT_SECRET_KEY`** в своих `.env` (берётся из корневого `.env` проекта).
 
 ---
 

@@ -101,8 +101,8 @@ CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "3002"]
 # PostgreSQL
 DATABASE_URL=postgresql://postgres:secret@postgres:5432/collab
 
-# JWT (должен совпадать с JWT_SECRET в auth-service)
-JWT_SECRET=your-super-secret-jwt-key-min-32-chars
+# JWT (должен совпадать с JWT_SECRET_KEY в auth-service)
+JWT_SECRET_KEY=your-super-secret-jwt-key-min-32-chars
 
 # Real-time Service — URL для отправки webhook-событий
 REALTIME_SERVICE_URL=http://realtime:3003

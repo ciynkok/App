@@ -13,8 +13,6 @@ CREATE TABLE IF NOT EXISTS auth.users (
     password_hash VARCHAR(255),
     name        VARCHAR(255) NOT NULL,
     avatar_url  TEXT,
-    role        VARCHAR(20) NOT NULL DEFAULT 'viewer'
-                CHECK (role IN ('admin', 'editor', 'viewer')),
     created_at  TIMESTAMPTZ DEFAULT NOW(),
     updated_at  TIMESTAMPTZ DEFAULT NOW()
 );

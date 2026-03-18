@@ -1,7 +1,7 @@
 import uuid
 import enum
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean, Text, func
+from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean, Text, func, Enum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from src.config.database import Base
@@ -65,13 +65,3 @@ class OAuthAccount(Base):
     access_token = Column(Text, nullable=True)
 
     user = relationship("User", back_populates="oauth_accounts")
-
-    __table_args__ = (
-        Enum(
-            "provider",
-            "google",
-            "github",
-            name="provider_enum",
-            schema="auth",
-        ),
-    )

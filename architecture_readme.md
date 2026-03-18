@@ -347,7 +347,7 @@ DATABASE_URL=postgresql://postgres:secret@postgres:5432/collab
 REDIS_URL=redis://redis:6379
 
 # ─── Auth Service ─────────────────────────────────────
-JWT_SECRET=your-super-secret-jwt-key-min-32-chars
+JWT_SECRET_KEY=your-super-secret-jwt-key-min-32-chars
 JWT_EXPIRES_IN=1h
 REFRESH_TOKEN_SECRET=your-refresh-secret
 REFRESH_TOKEN_EXPIRES_IN=30d
@@ -643,7 +643,7 @@ docker compose down -v
 ```
 Authorization: Bearer <access_token>
 ```
-Task Service и Real-time Service **валидируют JWT локально** через общий `JWT_SECRET`.
+Task Service и Real-time Service **валидируют JWT локально** через общий `JWT_SECRET_KEY`.
 
 **JWT payload:**
 ```json
@@ -656,7 +656,7 @@ Task Service и Real-time Service **валидируют JWT локально** 
 }
 ```
 
-**Важно:** Все сервисы используют **один `JWT_SECRET`** из корневого `.env` проекта.
+**Важно:** Все сервисы используют **один `JWT_SECRET_KEY`** из корневого `.env` проекта.
 
 ### 3. Webhook от Task Service к Real-time Service
 При любом CRUD-действии над задачей Task Service отправляет:
