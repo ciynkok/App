@@ -14,7 +14,7 @@ async def check_auth(
     Middleware для проверки JWT токена.
     Устанавливает user в request.state при успешной проверке.
     """
-    if not credentials:
+    if not credentials or not hasattr(credentials, "credentials"):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"error": "UNAUTHORIZED", "message": "Authentication required"},
