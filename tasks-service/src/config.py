@@ -23,7 +23,8 @@ class Settings(BaseSettings):
 
     # Auth Service
     auth_service_url: str = "http://auth-service:3001"
-    auth_service_verify_endpoint: str = "/auth/verify"
+    auth_service_verify_endpoint: str = "/auth/validate"
+    service_api_key: Optional[str] = None
 
     # Real-time Service
     realtime_service_url: str = "http://realtime-service:3003"

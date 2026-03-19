@@ -10,9 +10,6 @@ ROOT_DIR = BASE_DIR.parent  # проект App/
 ROOT_ENV = ROOT_DIR / ".env"
 SERVICE_ENV = BASE_DIR / ".env"
 
-# Используем корневой .env если он существует
-env_file = str(ROOT_ENV if ROOT_ENV.exists() else SERVICE_ENV)
-
 
 class Settings(BaseSettings):
     # PostgreSQL
@@ -43,12 +40,20 @@ class Settings(BaseSettings):
     # Frontend
     FRONTEND_URL: str = "http://localhost:3000"
 
+    # Inter-service communication
+    SERVICE_API_KEY: Optional[str] = None
+
     # Common
     NODE_ENV: str = "development"
     PORT: int = 3001
 
     class Config:
-        env_file = env_file
+        # Читаем оба файла: локальный переопределяет корневой
+        # Приоритет: env vars > service .env > root .env > defaults
+        env_file = [
+            str(ROOT_ENV),     # Сначала корневой (общие настройки)
+            str(SERVICE_ENV),  # Потом локальный (переопределяет auth-specific)
+        ]
         case_sensitive = True
 
 

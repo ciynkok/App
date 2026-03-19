@@ -23,6 +23,7 @@ from src.schemas.auth import (
     AuthResponse,
     UserResponse,
     TokenResponse,
+    TokenValidateResponse,
 )
 from src.middleware.auth import check_auth
 from src.config.redis import redis_client
@@ -368,3 +369,85 @@ async def github_callback(request: Request, db: AsyncSession = Depends(get_db)):
     redirect_url = f"{settings.FRONTEND_URL}/auth/callback?token={access_token}&refreshToken={refresh_token}"
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url=redirect_url)
+
+
+@router.post("/validate")
+async def validate_token(request: Request) -> TokenValidateResponse:
+    """
+    Валидация JWT токена для межсервисного общения.
+    Используется другими сервисами для проверки токенов.
+    """
+    # Проверка API Key для межсервисного доступа
+    api_key = request.headers.get("X-API-Key")
+    
+    if settings.SERVICE_API_KEY:
+        if not api_key or api_key != settings.SERVICE_API_KEY:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "FORBIDDEN",
+                    "message": "Invalid or missing API key",
+                },
+            )
+    
+    # Получение токена из заголовка Authorization
+    auth_header = request.headers.get("Authorization")
+    
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error": "UNAUTHORIZED",
+                "message": "Authorization header with Bearer token required",
+            },
+        )
+    
+    token = auth_header.replace("Bearer ", "")
+    
+    # Проверка токена
+    payload = verify_access_token(token)
+    
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error": "UNAUTHORIZED",
+                "message": "Invalid or expired token",
+            },
+        )
+    
+    # Проверка blacklist в Redis
+    jti = payload.get("jti")
+    if jti:
+        is_revoked = await redis_client.get(f"auth:blacklist:{jti}")
+        if is_revoked:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "error": "TOKEN_REVOKED",
+                    "message": "Token has been revoked",
+                },
+            )
+    
+    # Извлечение данных из payload
+    user_id = payload.get("sub")
+    email = payload.get("email")
+    exp = payload.get("exp")
+    iat = payload.get("iat")
+    
+    if not user_id or not email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error": "UNAUTHORIZED",
+                "message": "Invalid token payload",
+            },
+        )
+    
+    return TokenValidateResponse(
+        valid=True,
+        user_id=user_id,
+        email=email,
+        exp=datetime.fromtimestamp(exp) if exp else None,
+        iat=datetime.fromtimestamp(iat) if iat else None,
+    )

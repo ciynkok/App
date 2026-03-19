@@ -51,3 +51,13 @@ class OAuthCallbackResponse(BaseModel):
     message: str = "Authentication successful"
     accessToken: Optional[str] = None
     refreshToken: Optional[str] = None
+
+
+# Validation schemas
+class TokenValidateResponse(BaseModel):
+    """Ответ валидации токена для межсервисного общения"""
+    valid: bool
+    user_id: str
+    email: str
+    exp: Optional[datetime] = None
+    iat: Optional[datetime] = None
