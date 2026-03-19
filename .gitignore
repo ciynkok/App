@@ -84,3 +84,5 @@ tmp/
 temp/
 *.bak
 *.orig
+
+postman_*.json
