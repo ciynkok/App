@@ -1,4 +1,4 @@
-from fastapi import Request, HTTPException, status
+from fastapi import Request, HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from src.services.token import verify_access_token
 from src.config.redis import redis_client
@@ -8,13 +8,13 @@ security = HTTPBearer(auto_error=False)
 
 
 async def check_auth(
-    request: Request, credentials: HTTPAuthorizationCredentials = security
+    request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> dict:
     """
     Middleware для проверки JWT токена.
     Устанавливает user в request.state при успешной проверке.
     """
-    if not credentials or not hasattr(credentials, "credentials"):
+    if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"error": "UNAUTHORIZED", "message": "Authentication required"},
