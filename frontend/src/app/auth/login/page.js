@@ -4,9 +4,9 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
-import { login as loginApi } from '../../lib/api/auth';
-import { useAuth } from '../../hooks/useAuth';
-import { Button, Input, Card } from '../../components/ui';
+import { login as loginApi } from '../../../lib/api/auth';
+import { useAuth } from '../../../hooks/useAuth';
+import { Button, Input, Card } from '../../../components/ui';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {

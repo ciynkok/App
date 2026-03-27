@@ -2,12 +2,12 @@
 Database models for Task Service.
 SQLAlchemy 2.0 async models for PostgreSQL 'task' schema.
 """
+import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Text, Integer, ForeignKey, DateTime, CheckConstraint, Index, text
+from sqlalchemy import Column, String, Text, Integer, ForeignKey, DateTime, CheckConstraint, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, relationship
 from sqlalchemy.sql import func
-from sqlalchemy.schema import DefaultClause
 
 
 class Base(DeclarativeBase):
@@ -20,7 +20,7 @@ class Board(Base):
     __tablename__ = "boards"
     __table_args__ = {"schema": "task"}
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default=DefaultClause(text("gen_random_uuid()")))
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     owner_id = Column(UUID(as_uuid=True), nullable=False)
@@ -54,7 +54,7 @@ class Column(Base):
     __tablename__ = "columns"
     __table_args__ = {"schema": "task"}
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default=DefaultClause(text("gen_random_uuid()")))
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     board_id = Column(UUID(as_uuid=True), ForeignKey("task.boards.id", ondelete="CASCADE"), nullable=False)
     title = Column(String(255), nullable=False)
     position = Column(Integer, nullable=False, default=0)
@@ -76,7 +76,7 @@ class Task(Base):
         {"schema": "task"},
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default=DefaultClause(text("gen_random_uuid()")))
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     column_id = Column(UUID(as_uuid=True), ForeignKey("task.columns.id", ondelete="CASCADE"), nullable=False)
     board_id = Column(UUID(as_uuid=True), ForeignKey("task.boards.id", ondelete="CASCADE"), nullable=False)
     title = Column(String(255), nullable=False)
@@ -102,7 +102,7 @@ class Comment(Base):
         {"schema": "task"},
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default=DefaultClause(text("gen_random_uuid()")))
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     task_id = Column(UUID(as_uuid=True), ForeignKey("task.tasks.id", ondelete="CASCADE"), nullable=False)
     author_id = Column(UUID(as_uuid=True), nullable=False)
     content = Column(Text, nullable=False)

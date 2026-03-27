@@ -1,4 +1,4 @@
-import { useUserStore } from '../store/userStore';
+import { useUserStore } from '../../store/userStore';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
