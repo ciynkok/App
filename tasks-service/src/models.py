@@ -4,15 +4,11 @@ SQLAlchemy 2.0 async models for PostgreSQL 'task' schema.
 """
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Text, Integer, ForeignKey, DateTime, CheckConstraint, Index
+from sqlalchemy import Column as SQColumn, String, Text, Integer, ForeignKey, DateTime, CheckConstraint, Index
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-
-
-class Base(DeclarativeBase):
-    """Base class for all models."""
-    pass
+from src.database import Base
 
 
 class Board(Base):
@@ -20,12 +16,12 @@ class Board(Base):
     __tablename__ = "boards"
     __table_args__ = {"schema": "task"}
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    title = Column(String(255), nullable=False)
-    description = Column(Text, nullable=True)
-    owner_id = Column(UUID(as_uuid=True), nullable=False)
-    color = Column(String(7), default="#6366f1")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    id = SQColumn(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title = SQColumn(String(255), nullable=False)
+    description = SQColumn(Text, nullable=True)
+    owner_id = SQColumn(UUID(as_uuid=True), nullable=False)
+    color = SQColumn(String(7), default="#6366f1")
+    created_at = SQColumn(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
     members = relationship("BoardMember", back_populates="board", cascade="all, delete-orphan")
@@ -41,9 +37,9 @@ class BoardMember(Base):
         {"schema": "task"},
     )
 
-    board_id = Column(UUID(as_uuid=True), ForeignKey("task.boards.id", ondelete="CASCADE"), primary_key=True)
-    user_id = Column(UUID(as_uuid=True), primary_key=True)
-    role = Column(String(20), nullable=False, default="viewer")
+    board_id = SQColumn(UUID(as_uuid=True), ForeignKey("task.boards.id", ondelete="CASCADE"), primary_key=True)
+    user_id = SQColumn(UUID(as_uuid=True), primary_key=True)
+    role = SQColumn(String(20), nullable=False, default="viewer")
 
     # Relationships
     board = relationship("Board", back_populates="members")
@@ -54,11 +50,11 @@ class Column(Base):
     __tablename__ = "columns"
     __table_args__ = {"schema": "task"}
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    board_id = Column(UUID(as_uuid=True), ForeignKey("task.boards.id", ondelete="CASCADE"), nullable=False)
-    title = Column(String(255), nullable=False)
-    position = Column(Integer, nullable=False, default=0)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    id = SQColumn(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    board_id = SQColumn(UUID(as_uuid=True), ForeignKey("task.boards.id", ondelete="CASCADE"), nullable=False)
+    title = SQColumn(String(255), nullable=False)
+    position = SQColumn(Integer, nullable=False, default=0)
+    created_at = SQColumn(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
     board = relationship("Board", back_populates="columns")
@@ -76,17 +72,17 @@ class Task(Base):
         {"schema": "task"},
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    column_id = Column(UUID(as_uuid=True), ForeignKey("task.columns.id", ondelete="CASCADE"), nullable=False)
-    board_id = Column(UUID(as_uuid=True), ForeignKey("task.boards.id", ondelete="CASCADE"), nullable=False)
-    title = Column(String(255), nullable=False)
-    description = Column(Text, nullable=True)
-    assignee_id = Column(UUID(as_uuid=True), nullable=True)
-    priority = Column(String(10), default="medium")
-    status = Column(String(20), default="todo")
-    deadline = Column(DateTime(timezone=True), nullable=True)
-    position = Column(Integer, nullable=False, default=0)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    id = SQColumn(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    column_id = SQColumn(UUID(as_uuid=True), ForeignKey("task.columns.id", ondelete="CASCADE"), nullable=False)
+    board_id = SQColumn(UUID(as_uuid=True), ForeignKey("task.boards.id", ondelete="CASCADE"), nullable=False)
+    title = SQColumn(String(255), nullable=False)
+    description = SQColumn(Text, nullable=True)
+    assignee_id = SQColumn(UUID(as_uuid=True), nullable=True)
+    priority = SQColumn(String(10), default="medium")
+    status = SQColumn(String(20), default="todo")
+    deadline = SQColumn(DateTime(timezone=True), nullable=True)
+    position = SQColumn(Integer, nullable=False, default=0)
+    created_at = SQColumn(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
     column = relationship("Column", back_populates="tasks")
@@ -102,11 +98,11 @@ class Comment(Base):
         {"schema": "task"},
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    task_id = Column(UUID(as_uuid=True), ForeignKey("task.tasks.id", ondelete="CASCADE"), nullable=False)
-    author_id = Column(UUID(as_uuid=True), nullable=False)
-    content = Column(Text, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    id = SQColumn(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    task_id = SQColumn(UUID(as_uuid=True), ForeignKey("task.tasks.id", ondelete="CASCADE"), nullable=False)
+    author_id = SQColumn(UUID(as_uuid=True), nullable=False)
+    content = SQColumn(Text, nullable=False)
+    created_at = SQColumn(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
     task = relationship("Task", back_populates="comments")
