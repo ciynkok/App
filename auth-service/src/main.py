@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.config.database import engine, Base
-from src.config.oauth import configure_oauth
+#from src.config.oauth import configure_oauth
 from src.routes import auth
 from src.config.settings import settings
 
@@ -35,7 +35,7 @@ def create_app() -> FastAPI:
     )
 
     # Настройка OAuth
-    configure_oauth()
+    #configure_oauth()
 
     # Создание таблиц при старте
     @app.on_event("startup")

@@ -27,16 +27,6 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_SECRET: str
     REFRESH_TOKEN_EXPIRES_IN: str = "30d"
 
-    # OAuth2 - Google
-    GOOGLE_CLIENT_ID: Optional[str] = None
-    GOOGLE_CLIENT_SECRET: Optional[str] = None
-    GOOGLE_CALLBACK_URL: str = "http://localhost/auth/google/callback"
-
-    # OAuth2 - GitHub
-    GITHUB_CLIENT_ID: Optional[str] = None
-    GITHUB_CLIENT_SECRET: Optional[str] = None
-    GITHUB_CALLBACK_URL: str = "http://localhost/auth/github/callback"
-
     # Frontend
     FRONTEND_URL: str = "http://localhost:3000"
 

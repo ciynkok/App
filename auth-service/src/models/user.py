@@ -27,9 +27,9 @@ class User(Base):
     refresh_tokens = relationship(
         "RefreshToken", back_populates="user", cascade="all, delete-orphan"
     )
-    oauth_accounts = relationship(
-        "OAuthAccount", back_populates="user", cascade="all, delete-orphan"
-    )
+    #oauth_accounts = relationship(
+     #   "OAuthAccount", back_populates="user", cascade="all, delete-orphan"
+    #)
 
 
 class RefreshToken(Base):
@@ -49,7 +49,7 @@ class RefreshToken(Base):
 
     user = relationship("User", back_populates="refresh_tokens")
 
-
+'''
 class OAuthAccount(Base):
     __tablename__ = "oauth_accounts"
     __table_args__ = {"schema": "auth"}
@@ -65,3 +65,4 @@ class OAuthAccount(Base):
     access_token = Column(Text, nullable=True)
 
     user = relationship("User", back_populates="oauth_accounts")
+'''

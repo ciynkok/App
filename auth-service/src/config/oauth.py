@@ -1,3 +1,4 @@
+'''
 from authlib.integrations.starlette_client import OAuth
 from src.config.settings import settings
 
@@ -34,3 +35,4 @@ def configure_oauth():
         )
 
     return oauth
+'''
