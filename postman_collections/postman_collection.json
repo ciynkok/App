@@ -491,7 +491,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"columnId\": \"{{column_id}}\",\n  \"boardId\": \"{{board_id}}\",\n  \"title\": \"Fix login bug\",\n  \"description\": \"Users can't log in with Google\",\n  \"assigneeId\": \"{{user_id}}\",\n  \"priority\": \"high\",\n  \"deadline\": \"2026-04-01T00:00:00Z\"\n}"
+              "raw": "{\n  \"column_id\": \"{{column_id}}\",\n  \"boardId\": \"{{board_id}}\",\n  \"title\": \"Fix login bug\",\n  \"description\": \"Users can't log in with Google\",\n  \"assignee_id\": \"{{user_id}}\",\n  \"priority\": \"high\",\n  \"deadline\": \"2026-04-01T00:00:00Z\"\n}"
             },
             "url": {
               "raw": "{{task_base_url}}/api/tasks",
