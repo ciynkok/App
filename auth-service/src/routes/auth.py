@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from passlib.context import CryptContext
 from src.config.database import get_db
-from src.config.oauth import oauth
+#from src.config.oauth import oauth
 from src.services.token import (
     create_access_token,
     create_refresh_token,
@@ -14,7 +14,6 @@ from src.services.user import (
     get_user_by_email,
     get_user_by_id,
     create_user,
-    find_or_create_oauth_user,
 )
 from src.models.user import Provider
 from src.schemas.auth import (
@@ -245,6 +244,7 @@ async def logout(
     return None
 
 
+'''
 # OAuth2 endpoints
 @router.get("/google")
 async def google_login(request: Request):
@@ -370,7 +370,7 @@ async def github_callback(request: Request, db: AsyncSession = Depends(get_db)):
     redirect_url = f"{settings.FRONTEND_URL}/auth/callback?token={access_token}&refreshToken={refresh_token}"
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url=redirect_url)
-
+'''
 
 @router.post("/validate")
 async def validate_token(request: Request) -> TokenValidateResponse:
@@ -379,7 +379,9 @@ async def validate_token(request: Request) -> TokenValidateResponse:
     Используется другими сервисами для проверки токенов.
     """
     # Проверка API Key для межсервисного доступа
+    '''
     api_key = request.headers.get("X-API-Key")
+    print('API_Key', api_key)
     
     if settings.SERVICE_API_KEY:
         if not api_key or api_key != settings.SERVICE_API_KEY:
@@ -390,7 +392,7 @@ async def validate_token(request: Request) -> TokenValidateResponse:
                     "message": "Invalid or missing API key",
                 },
             )
-    
+    '''
     # Получение токена из заголовка Authorization
     auth_header = request.headers.get("Authorization")
     

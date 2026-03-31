@@ -46,12 +46,12 @@ class AuthResponse(BaseModel):
     refreshToken: str
     user: UserResponse
 
-
+'''
 class OAuthCallbackResponse(BaseModel):
     message: str = "Authentication successful"
     accessToken: Optional[str] = None
     refreshToken: Optional[str] = None
-
+'''
 
 # Validation schemas
 class TokenValidateResponse(BaseModel):

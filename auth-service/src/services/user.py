@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from src.models.user import User, OAuthAccount, Provider
+from src.models.user import User, Provider
 from src.services.token import hash_token
 import hashlib
 
@@ -38,7 +38,7 @@ async def create_user(
     await session.refresh(user)
     return user
 
-
+'''
 async def create_oauth_account(
     session: AsyncSession,
     user_id: str,
@@ -117,3 +117,4 @@ async def find_or_create_oauth_user(
     )
 
     return user
+'''
