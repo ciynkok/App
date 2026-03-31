@@ -11,7 +11,7 @@ import toast from 'react-hot-toast';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated } = useAuth(); // Получение параметров пользователя
   const [isLoading, setIsLoading] = useState(false);
   
   const { register, handleSubmit, formState: { errors } } = useForm();
@@ -22,11 +22,11 @@ export default function LoginPage() {
     return null;
   }
 
-  const onSubmit = async (data) => {
+   const onSubmit = async (data) => {
     setIsLoading(true);
     try {
-      const response = await loginApi(data.email, data.password);
-      login(response.user, response.token);
+      const response = await loginApi(data.email, data.password); // Проверяем, на факт существования пользователя
+      login(response.user, response.accessToken, response.refreshToken); // fix #8: передаётся refreshToken // Сохраняет данные о пользователе
       toast.success('Welcome back!');
       router.push('/');
     } catch (error) {
