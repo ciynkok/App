@@ -1,0 +1,35 @@
+{
+  "name": "realtime-collaborative-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "^6.x",
+    "@dnd-kit/sortable": "^7.x",
+    "@dnd-kit/utilities": "^3.x",
+    "clsx": "^2.x",
+    "date-fns": "^3.x",
+    "framer-motion": "^11.x",
+    "js-cookie": "^3.0.5",
+    "lucide-react": "^0.x",
+    "next": "15.x",
+    "react": "19.x",
+    "react-dom": "19.x",
+    "react-hook-form": "^7.x",
+    "react-hot-toast": "^2.x",
+    "recharts": "^2.x",
+    "socket.io-client": "^4.x",
+    "tailwind-merge": "^2.x",
+    "zustand": "^4.x"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.x",
+    "autoprefixer": "^10.x",
+    "postcss": "^8.x"
+  }
+}

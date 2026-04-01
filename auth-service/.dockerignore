@@ -1,0 +1,47 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.env
+.venv
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Тесты и покрытие
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Логи
+*.log
+
+# Документация
+*.md
+!requirements.txt
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Node.js (если остались старые файлы)
+node_modules/
+package.json
+package-lock.json
+prisma/

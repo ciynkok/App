@@ -1,0 +1,1054 @@
+{
+  "info": {
+    "_postman_id": "collab-api-collection",
+    "name": "Collab API Collection",
+    "description": "Postman коллекция для тестирования API всех сервисов: Auth Service, Task Service",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "auth_base_url",
+      "value": "http://localhost:3001",
+      "type": "string"
+    },
+    {
+      "key": "task_base_url",
+      "value": "http://localhost:3002",
+      "type": "string"
+    },
+    {
+      "key": "realtime_base_url",
+      "value": "http://localhost:3003",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_email",
+      "value": "test@example.com",
+      "type": "string"
+    },
+    {
+      "key": "user_password",
+      "value": "TestPassword123!",
+      "type": "string"
+    },
+    {
+      "key": "user_name",
+      "value": "Test User",
+      "type": "string"
+    },
+    {
+      "key": "service_api_key",
+      "value": "C3nIxkaNpQ0NwPsYgxo508ygDybUlIWTtO_ZtqGfH6k",
+      "type": "string"
+    },
+    {
+      "key": "board_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "column_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "task_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "comment_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{user_email}}\",\n  \"password\": \"{{user_password}}\",\n  \"name\": \"{{user_name}}\"\n}"
+            },
+            "url": {
+              "raw": "{{auth_base_url}}/auth/register",
+              "host": ["{{auth_base_url}}"],
+              "path": ["auth", "register"]
+            },
+            "description": "Регистрация нового пользователя"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('access_token', jsonData.accessToken);",
+                  "    pm.collectionVariables.set('refresh_token', jsonData.refreshToken);",
+                  "    pm.collectionVariables.set('user_id', jsonData.user.id);",
+                  "    pm.collectionVariables.set('user_email', jsonData.user.email);",
+                  "    console.log('Tokens saved to collection variables');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{user_email}}\",\n  \"password\": \"{{user_password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{auth_base_url}}/auth/login",
+              "host": ["{{auth_base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Логин по email и паролю"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('access_token', jsonData.accessToken);",
+                  "    pm.collectionVariables.set('refresh_token', jsonData.refreshToken);",
+                  "    pm.collectionVariables.set('user_id', jsonData.user.id);",
+                  "    console.log('Tokens saved to collection variables');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{auth_base_url}}/auth/refresh",
+              "host": ["{{auth_base_url}}"],
+              "path": ["auth", "refresh"]
+            },
+            "description": "Обновление access токена по refresh токену"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('access_token', jsonData.accessToken);",
+                  "    pm.collectionVariables.set('refresh_token', jsonData.refreshToken);",
+                  "    console.log('New tokens saved to collection variables');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{auth_base_url}}/auth/logout",
+              "host": ["{{auth_base_url}}"],
+              "path": ["auth", "logout"]
+            },
+            "description": "Выход из системы (инвалидация токенов)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Current User (Me)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{auth_base_url}}/auth/me",
+              "host": ["{{auth_base_url}}"],
+              "path": ["auth", "me"]
+            },
+            "description": "Получение данных текущего пользователя"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Inter-Service",
+      "item": [
+        {
+          "name": "Validate Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{service_api_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{auth_base_url}}/auth/validate",
+              "host": ["{{auth_base_url}}"],
+              "path": ["auth", "validate"]
+            },
+            "description": "Валидация JWT токена для межсервисного общения. Используется другими сервисами для проверки токенов."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{auth_base_url}}/health",
+          "host": ["{{auth_base_url}}"],
+          "path": ["health"]
+        },
+        "description": "Проверка статуса сервиса"
+      },
+      "response": []
+    },
+    {
+      "name": "Task Service - Boards",
+      "item": [
+        {
+          "name": "Get All Boards",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{task_base_url}}/api/boards",
+              "host": ["{{task_base_url}}"],
+              "path": ["api", "boards"]
+            },
+            "description": "Список досок, где пользователь является участником"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Board",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"My Project Board\",\n  \"description\": \"Project management board\",\n  \"color\": \"#6366f1\"\n}"
+            },
+            "url": {
+              "raw": "{{task_base_url}}/api/boards",
+              "host": ["{{task_base_url}}"],
+              "path": ["api", "boards"]
+            },
+            "description": "Создать новую доску"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('board_id', jsonData.id);",
+                  "    console.log('Board ID saved: ' + jsonData.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Board by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{task_base_url}}/api/boards/{{board_id}}",
+              "host": ["{{task_base_url}}"],
+              "path": ["api", "boards", "{{board_id}}"]
+            },
+            "description": "Полные данные доски с колонками и задачами"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Board",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{task_base_url}}/api/boards/{{board_id}}",
+              "host": ["{{task_base_url}}"],
+              "path": ["api", "boards", "{{board_id}}"]
+            },
+            "description": "Удалить доску (требует роль admin)"
+          },
+          "response": []
+        },
+        {
+          "name": "Add Column to Board",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"To Do\",\n  \"position\": 0\n}"
+            },
+            "url": {
+              "raw": "{{task_base_url}}/api/boards/{{board_id}}/columns",
+              "host": ["{{task_base_url}}"],
+              "path": ["api", "boards", "{{board_id}}", "columns"]
+            },
+            "description": "Добавить колонку в доску"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('column_id', jsonData.id);",
+                  "    console.log('Column ID saved: ' + jsonData.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Column",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{task_base_url}}/api/boards/{{board_id}}/columns/{{column_id}}",
+              "host": ["{{task_base_url}}"],
+              "path": ["api", "boards", "{{board_id}}", "columns", "{{column_id}}"]
+            },
+            "description": "Удалить колонку (и все задачи в ней)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Task Service - Tasks",
+      "item": [
+        {
+          "name": "Get Tasks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{task_base_url}}/api/tasks?boardId={{board_id}}",
+              "host": ["{{task_base_url}}"],
+              "path": ["api", "tasks"],
+              "query": [
+                {
+                  "key": "boardId",
+                  "value": "{{board_id}}"
+                }
+              ]
+            },
+            "description": "Список задач с фильтрацией по доске"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"column_id\": \"{{column_id}}\",\n  \"boardId\": \"{{board_id}}\",\n  \"title\": \"Fix login bug\",\n  \"description\": \"Users can't log in with Google\",\n  \"assignee_id\": \"{{user_id}}\",\n  \"priority\": \"high\",\n  \"deadline\": \"2026-04-01T00:00:00Z\"\n}"
+            },
+            "url": {
+              "raw": "{{task_base_url}}/api/tasks",
+              "host": ["{{task_base_url}}"],
+              "path": ["api", "tasks"]
+            },
+            "description": "Создать новую задачу"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('task_id', jsonData.id);",
+                  "    console.log('Task ID saved: ' + jsonData.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Task",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated task title\",\n  \"priority\": \"urgent\",\n  \"status\": \"in_progress\"\n}"
+            },
+            "url": {
+              "raw": "{{task_base_url}}/api/tasks/{{task_id}}",
+              "host": ["{{task_base_url}}"],
+              "path": ["api", "tasks", "{{task_id}}"]
+            },
+            "description": "Обновить поля задачи"
+          },
+          "response": []
+        },
+        {
+          "name": "Move Task",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"columnId\": \"{{column_id}}\",\n  \"position\": 2\n}"
+            },
+            "url": {
+              "raw": "{{task_base_url}}/api/tasks/{{task_id}}/move",
+              "host": ["{{task_base_url}}"],
+              "path": ["api", "tasks", "{{task_id}}", "move"]
+            },
+            "description": "Переместить задачу в другую колонку (drag-and-drop)"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Task",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{task_base_url}}/api/tasks/{{task_id}}",
+              "host": ["{{task_base_url}}"],
+              "path": ["api", "tasks", "{{task_id}}"]
+            },
+            "description": "Удалить задачу"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Task Service - Comments",
+      "item": [
+        {
+          "name": "Get Task Comments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{task_base_url}}/api/tasks/{{task_id}}/comments",
+              "host": ["{{task_base_url}}"],
+              "path": ["api", "tasks", "{{task_id}}", "comments"]
+            },
+            "description": "Список комментариев к задаче"
+          },
+          "response": []
+        },
+        {
+          "name": "Add Comment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"This is a test comment\"\n}"
+            },
+            "url": {
+              "raw": "{{task_base_url}}/api/tasks/{{task_id}}/comments",
+              "host": ["{{task_base_url}}"],
+              "path": ["api", "tasks", "{{task_id}}", "comments"]
+            },
+            "description": "Добавить комментарий к задаче"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('comment_id', jsonData.id);",
+                  "    console.log('Comment ID saved: ' + jsonData.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Comment",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{task_base_url}}/api/tasks/{{task_id}}/comments/{{comment_id}}",
+              "host": ["{{task_base_url}}"],
+              "path": ["api", "tasks", "{{task_id}}", "comments", "{{comment_id}}"]
+            },
+            "description": "Удалить комментарий"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Task Service - Stats",
+      "item": [
+        {
+          "name": "Get Board Stats (Burn-down Chart)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{task_base_url}}/api/boards/{{board_id}}/stats",
+              "host": ["{{task_base_url}}"],
+              "path": ["api", "boards", "{{board_id}}", "stats"]
+            },
+            "description": "Аналитические данные для burn-down chart"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Task Service - Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{task_base_url}}/health",
+          "host": ["{{task_base_url}}"],
+          "path": ["health"]
+        },
+        "description": "Проверка статуса Task Service"
+      },
+      "response": []
+    },
+    {
+      "name": "Realtime Service - Internal Webhook",
+      "item": [
+        {
+          "name": "Send Task Created Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"task:created\",\n  \"boardId\": \"{{board_id}}\",\n  \"payload\": {\n    \"task\": {\n      \"id\": \"{{task_id}}\",\n      \"title\": \"Test task\",\n      \"columnId\": \"{{column_id}}\",\n      \"boardId\": \"{{board_id}}\",\n      \"priority\": \"high\",\n      \"status\": \"todo\"\n    },\n    \"boardId\": \"{{board_id}}\",\n    \"userId\": \"{{user_id}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{realtime_base_url}}/internal/events",
+              "host": ["{{realtime_base_url}}"],
+              "path": ["internal", "events"]
+            },
+            "description": "Webhook от Task Service о создании задачи. Broadcast всем клиентам в комнате доски."
+          },
+          "response": []
+        },
+        {
+          "name": "Send Task Updated Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"task:updated\",\n  \"boardId\": \"{{board_id}}\",\n  \"payload\": {\n    \"taskId\": \"{{task_id}}\",\n    \"changes\": {\n      \"title\": \"Updated task\",\n      \"priority\": \"urgent\",\n      \"status\": \"in_progress\"\n    },\n    \"userId\": \"{{user_id}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{realtime_base_url}}/internal/events",
+              "host": ["{{realtime_base_url}}"],
+              "path": ["internal", "events"]
+            },
+            "description": "Webhook от Task Service об обновлении задачи."
+          },
+          "response": []
+        },
+        {
+          "name": "Send Task Moved Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"task:moved\",\n  \"boardId\": \"{{board_id}}\",\n  \"payload\": {\n    \"taskId\": \"{{task_id}}\",\n    \"fromCol\": \"{{column_id}}\",\n    \"toCol\": \"{{column_id}}\",\n    \"position\": 2,\n    \"userId\": \"{{user_id}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{realtime_base_url}}/internal/events",
+              "host": ["{{realtime_base_url}}"],
+              "path": ["internal", "events"]
+            },
+            "description": "Webhook от Task Service о перемещении задачи в другую колонку."
+          },
+          "response": []
+        },
+        {
+          "name": "Send Task Deleted Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"task:deleted\",\n  \"boardId\": \"{{board_id}}\",\n  \"payload\": {\n    \"taskId\": \"{{task_id}}\",\n    \"boardId\": \"{{board_id}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{realtime_base_url}}/internal/events",
+              "host": ["{{realtime_base_url}}"],
+              "path": ["internal", "events"]
+            },
+            "description": "Webhook от Task Service об удалении задачи."
+          },
+          "response": []
+        },
+        {
+          "name": "Send Comment Added Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"comment:added\",\n  \"boardId\": \"{{board_id}}\",\n  \"payload\": {\n    \"taskId\": \"{{task_id}}\",\n    \"comment\": {\n      \"id\": \"{{comment_id}}\",\n      \"content\": \"Test comment\",\n      \"authorId\": \"{{user_id}}\",\n      \"createdAt\": \"2026-03-29T12:00:00Z\"\n    },\n    \"userId\": \"{{user_id}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{realtime_base_url}}/internal/events",
+              "host": ["{{realtime_base_url}}"],
+              "path": ["internal", "events"]
+            },
+            "description": "Webhook от Task Service о добавлении комментария."
+          },
+          "response": []
+        },
+        {
+          "name": "Send Invalid Event (should fail)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"invalid:event\",\n  \"boardId\": \"{{board_id}}\",\n  \"payload\": {}\n}"
+            },
+            "url": {
+              "raw": "{{realtime_base_url}}/internal/events",
+              "host": ["{{realtime_base_url}}"],
+              "path": ["internal", "events"]
+            },
+            "description": "Тест валидации — неизвестное событие должно вернуть ошибку 400."
+          },
+          "response": []
+        },
+        {
+          "name": "Send Webhook without boardId (should fail)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"task:created\",\n  \"payload\": {}\n}"
+            },
+            "url": {
+              "raw": "{{realtime_base_url}}/internal/events",
+              "host": ["{{realtime_base_url}}"],
+              "path": ["internal", "events"]
+            },
+            "description": "Тест валидации — отсутствие boardId должно вернуть ошибку 400."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Realtime Service - Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{realtime_base_url}}/health",
+          "host": ["{{realtime_base_url}}"],
+          "path": ["health"]
+        },
+        "description": "Проверка статуса Realtime Service"
+      },
+      "response": []
+    },
+    {
+      "name": "Test Scenarios",
+      "item": [
+        {
+          "name": "Register with weak password (should fail)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test2@example.com\",\n  \"password\": \"123\",\n  \"name\": \"Test User\"\n}"
+            },
+            "url": {
+              "raw": "{{auth_base_url}}/auth/register",
+              "host": ["{{auth_base_url}}"],
+              "path": ["auth", "register"]
+            },
+            "description": "Тест валидации пароля (минимум 8 символов)"
+          },
+          "response": []
+        },
+        {
+          "name": "Register with invalid email (should fail)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"invalid-email\",\n  \"password\": \"TestPassword123!\",\n  \"name\": \"Test User\"\n}"
+            },
+            "url": {
+              "raw": "{{auth_base_url}}/auth/register",
+              "host": ["{{auth_base_url}}"],
+              "path": ["auth", "register"]
+            },
+            "description": "Тест валидации email"
+          },
+          "response": []
+        },
+        {
+          "name": "Login with wrong password (should fail)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{user_email}}\",\n  \"password\": \"WrongPassword\"\n}"
+            },
+            "url": {
+              "raw": "{{auth_base_url}}/auth/login",
+              "host": ["{{auth_base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Тест неверного пароля"
+          },
+          "response": []
+        },
+        {
+          "name": "Register duplicate email (should fail)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{user_email}}\",\n  \"password\": \"{{user_password}}\",\n  \"name\": \"Duplicate User\"\n}"
+            },
+            "url": {
+              "raw": "{{auth_base_url}}/auth/register",
+              "host": ["{{auth_base_url}}"],
+              "path": ["auth", "register"]
+            },
+            "description": "Тест регистрации с существующим email"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Me without token (should fail)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{auth_base_url}}/auth/me",
+              "host": ["{{auth_base_url}}"],
+              "path": ["auth", "me"]
+            },
+            "description": "Тест доступа без токена"
+          },
+          "response": []
+        },
+        {
+          "name": "Validate Token without API Key (should fail)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{auth_base_url}}/auth/validate",
+              "host": ["{{auth_base_url}}"],
+              "path": ["auth", "validate"]
+            },
+            "description": "Тест валидации токена без API ключа"
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh with invalid token (should fail)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"invalid.refresh.token\"\n}"
+            },
+            "url": {
+              "raw": "{{auth_base_url}}/auth/refresh",
+              "host": ["{{auth_base_url}}"],
+              "path": ["auth", "refresh"]
+            },
+            "description": "Тест обновления с неверным refresh токеном"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

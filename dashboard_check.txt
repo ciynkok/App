@@ -1,0 +1,85 @@
+// ============================================
+// ПРОВЕРКА DASHBOARD - СКОПИРОВАТЬ В CONSOLE (F12)
+// ============================================
+
+// 1. Проверка токена
+console.log('=== ПРОВЕРКА ТОКЕНА ===');
+const storage = JSON.parse(localStorage.getItem('user-storage') || '{}');
+const token = storage.state?.token;
+console.log('Token exists:', token ? 'YES ✅' : 'NO ❌');
+if (token) {
+  console.log('Token (first 50 chars):', token.substring(0, 50) + '...');
+}
+
+// 2. Проверка API /boards
+console.log('\n=== ПРОВЕРКА API /boards ===');
+fetch('http://localhost/api/boards', {
+  headers: {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  }
+})
+  .then(r => {
+    console.log('Status:', r.status);
+    return r.json();
+  })
+  .then(boards => {
+    console.log('Boards:', boards);
+    console.log('Boards count:', boards.length);
+    if (boards.length > 0) {
+      console.log('First board:', boards[0]);
+    }
+  })
+  .catch(err => console.error('Error:', err));
+
+// 3. Создать тестовую доску
+console.log('\n=== СОЗДАТЬ ТЕСТОВУЮ ДОСКУ ===');
+function createTestBoard() {
+  fetch('http://localhost/api/boards', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      title: 'My First Board',
+      description: 'Test Board from Console',
+      color: '#3b82f6'
+    })
+  })
+    .then(r => r.json())
+    .then(board => {
+      console.log('✅ Board created:', board);
+      console.log('Board ID:', board.id);
+      console.log('Redirecting to dashboard...');
+      setTimeout(() => {
+        window.location.href = `/dashboard/${board.id}`;
+      }, 2000);
+    })
+    .catch(err => console.error('❌ Error:', err));
+}
+
+// Запустить создание доски
+createTestBoard();
+
+// 4. Проверка WebSocket
+console.log('\n=== ПРОВЕРКА WEBSOCKET ===');
+console.log('WS URL:', process.env?.NEXT_PUBLIC_WS_URL || 'ws://localhost/ws');
+console.log('Socket connected:', typeof socket !== 'undefined' ? socket.connected : 'Socket not loaded');
+
+// 5. Проверка localStorage
+console.log('\n=== ПРОВЕРКА LOCALSTORAGE ===');
+console.log('user-storage:', localStorage.getItem('user-storage') ? 'EXISTS ✅' : 'MISSING ❌');
+console.log('board-storage:', localStorage.getItem('board-storage') ? 'EXISTS ✅' : 'MISSING ❌');
+console.log('tasks-storage:', localStorage.getItem('tasks-storage') ? 'EXISTS ✅' : 'MISSING ❌');
+
+// ============================================
+// ИНСТРУКЦИЯ:
+// 1. Откройте http://localhost:3000/dashboard/1
+// 2. Нажмите F12 → Console
+// 3. Скопируйте весь этот код
+// 4. Вставьте в Console и нажмите Enter
+// 5. Смотрите результат
+//
+// Если доска создана - автоматически перекинет на /dashboard/{id}
+// ============================================
