@@ -51,8 +51,11 @@ export async function updateTask(taskId, data) {
 
 export async function moveTask(taskId, columnId, position) {
   return fetchWithAuth(`${API_URL}/api/tasks/${taskId}/move`, {
-    method: 'PATCH',
-    body: JSON.stringify({ columnId, position }),
+    method: 'POST',
+    body: JSON.stringify({
+      target_column_id: columnId,
+      new_position: position
+    }),
   });
 }
 
@@ -69,7 +72,10 @@ export async function getComments(taskId) {
 export async function addComment(taskId, text) {
   return fetchWithAuth(`${API_URL}/api/tasks/${taskId}/comments`, {
     method: 'POST',
-    body: JSON.stringify({ text }),
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ content: text }),
   });
 }
 

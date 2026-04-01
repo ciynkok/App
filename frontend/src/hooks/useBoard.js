@@ -27,10 +27,17 @@ export function useBoard(boardId) {
   const loadTasks = useCallback(async () => {
     try {
       const data = await getTasks(boardId);
+      console.log('=== LOAD TASKS ===');
+      console.log('Tasks from API:', data.length);
+      if (data.length > 0) {
+        data.forEach((t, i) => {
+          console.log(`  Task ${i+1}: ${t.title} (Column: ${t.column_id})`);
+        });
+      }
       setTasks(data);
     } catch (error) {
       toast.error('Failed to load tasks');
-      console.error(error);
+      console.error('Load tasks error:', error);
     }
   }, [boardId, setTasks]);
 

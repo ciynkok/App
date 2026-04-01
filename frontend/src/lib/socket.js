@@ -8,11 +8,13 @@ export const socket = io(WS_URL, {
   reconnection: true,
   reconnectionAttempts: 5,
   reconnectionDelay: 1000,
+  path: '/socket.io/',  // Socket.io path
 });
 
 export function connectSocket(token) {
   if (token) {
-    socket.auth = { token };
+    // Переподключаемся с токеном в query params
+    socket.io.opts.query = { token };
     socket.connect();
   }
 }

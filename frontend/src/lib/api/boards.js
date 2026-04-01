@@ -55,6 +55,12 @@ export async function deleteBoard(boardId) {
   });
 }
 
+export async function deleteColumn(boardId, columnId) {
+  return fetchWithAuth(`${API_URL}/api/boards/${boardId}/columns/${columnId}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function getBoardStats(boardId) {
   return fetchWithAuth(`${API_URL}/api/boards/${boardId}/stats`);
 }

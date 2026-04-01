@@ -36,7 +36,7 @@ async def create_board(
 ):
     """
     Create a new board.
-    
+
     The user who creates the board becomes the owner and is automatically added as an admin member.
     """
     # Create board
@@ -46,10 +46,10 @@ async def create_board(
         owner_id=UUID(user_id),
         color=board_data.color
     )
-    
+
     db.add(board)
     await db.flush()
-    
+
     # Add creator as admin member
     member = BoardMember(
         board_id=board.id,
@@ -57,10 +57,10 @@ async def create_board(
         role="admin"
     )
     db.add(member)
-    
+
     await db.commit()
     await db.refresh(board)
-    
+
     return board
 
 
@@ -331,6 +331,37 @@ async def remove_board_member(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": {"code": "MEMBER_NOT_FOUND", "message": "Board member not found"}}
         )
-    
+
     await db.delete(member)
+    await db.commit()
+
+
+@router.delete("/{board_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_board(
+    board_id: UUID,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Delete a board.
+    Only board owner can delete the board.
+    """
+    # Get board
+    result = await db.execute(select(Board).where(Board.id == board_id))
+    board = result.scalar_one_or_none()
+
+    if not board:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": {"code": "BOARD_NOT_FOUND", "message": "Board not found"}}
+        )
+
+    # Check if user is owner
+    if str(board.owner_id) != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error": {"code": "FORBIDDEN", "message": "Only board owner can delete"}}
+        )
+
+    await db.delete(board)
     await db.commit()

@@ -58,7 +58,7 @@ async def create_task(
         assignee_id=task_data.assignee_id,
         priority=task_data.priority,
         deadline=task_data.deadline,
-        position=task_data.position or 0
+        position=task_data.position if task_data.position is not None else 0
     )
     
     db.add(task)

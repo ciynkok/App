@@ -38,7 +38,9 @@ export default function CreateBoardModal({ isOpen, onClose, onCreate }) {
     setIsLoading(true);
     try {
       const newBoard = await createBoard({
-        ...data,
+        /*...data,*/
+        title: data.name,
+        description: data.description,
         color: selectedColor,
       });
       toast.success('Board created successfully');

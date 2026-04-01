@@ -15,6 +15,9 @@ def create_access_token(user: User) -> str:
     payload = {
         "sub": str(user.id),
         "email": user.email,
+
+        "role": getattr(user, 'role', 'user'),  # Добавить role
+
         "jti": jti,
         "iat": now,
         "exp": now + expires_delta,

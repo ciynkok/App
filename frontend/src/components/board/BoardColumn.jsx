@@ -3,9 +3,9 @@
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import TaskCard from './TaskCard';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 
-export default function BoardColumn({ column, tasks, onTaskClick, onAddTask }) {
+export default function BoardColumn({ column, tasks, onTaskClick, onAddTask, onDeleteColumn }) {
   const { setNodeRef, isOver } = useDroppable({
     id: column.id,
   });
@@ -28,18 +28,30 @@ export default function BoardColumn({ column, tasks, onTaskClick, onAddTask }) {
             style={{ backgroundColor: column.color || '#6b7280' }}
           />
           <h3 className="font-semibold text-gray-900 dark:text-gray-100">
-            {column.name}
+            {column.title || column.name}
           </h3>
           <span className="text-sm text-gray-500 dark:text-gray-400">
             ({tasks.length})
           </span>
         </div>
-        <button
-          onClick={() => onAddTask(column.id)}
-          className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
-        >
-          <Plus className="w-4 h-4" />
-        </button>
+        <div className="flex items-center space-x-1">
+          <button
+            onClick={() => onAddTask(column.id)}
+            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
+            title="Add task"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+          {onDeleteColumn && (
+            <button
+              onClick={() => onDeleteColumn(column.id, column.title)}
+              className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/20 text-red-500"
+              title="Delete column"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tasks List */}

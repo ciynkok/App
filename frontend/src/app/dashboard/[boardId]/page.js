@@ -6,28 +6,30 @@ import { DndContext, DragEndEvent, DragStartEvent, DragOverlay, closestCorners }
 import { useAuth } from '../../../hooks/useAuth';
 import { useBoard } from '../../../hooks/useBoard';
 import { useSocket } from '../../../hooks/useSocket';
-import { getBoard } from '../../../lib/api/boards';
+import { getBoard, deleteColumn } from '../../../lib/api/boards';
 import { moveTask } from '../../../lib/api/tasks';
-import { useBoardStore } from '../../../store/boardStore';
 import { useUserStore } from '../../../store/userStore';
+import { useBoardStore } from '../../../store/boardStore';
 import BoardColumn from '../../../components/board/BoardColumn';
 import AddTaskForm from '../../../components/board/AddTaskForm';
 import TaskDetailModal from '../../../components/modals/TaskDetailModal';
 import BoardChat from '../../../components/chat/BoardChat';
 import BurnDownChart from '../../../components/charts/BurnDownChart';
 import { Button, Avatar, Card, Modal } from '../../../components/ui';
-import { ArrowLeft, Share2, Users, Moon, Sun, BarChart3, Layout } from 'lucide-react';
+import { ArrowLeft, Share2, Users, Moon, Sun, BarChart3, Layout, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function DashboardPage() {
   const router = useRouter();
   const params = useParams();
   const boardId = params.boardId;
+  
+  const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
   const { isAuthenticated, user } = useAuth();
   const { isConnected } = useSocket();
   const { tasks, onlineUsers, loadTasks, loadStats, joinBoard, leaveBoard } = useBoard(boardId);
-  const { board, columns, setBoard, setColumns, tasks: storeTasks, setTasks } = useBoardStore();
+  const { board, columns, setBoard, setColumns, setTasks } = useBoardStore();
   const { token } = useUserStore();
 
   const [isLoading, setIsLoading] = useState(true);
@@ -38,14 +40,23 @@ export default function DashboardPage() {
   const [statsData, setStatsData] = useState(null);
   const [darkMode, setDarkMode] = useState(false);
 
+  // Dark mode
   useEffect(() => {
-    // Check for dark mode preference
     const isDark = localStorage.getItem('darkMode') === 'true';
     setDarkMode(isDark);
     if (isDark) {
       document.documentElement.classList.add('dark');
     }
   }, []);
+
+  // Debug logs
+  useEffect(() => {
+    console.log('=== PAGE RENDER ===');
+    console.log('Columns:', columns.length);
+    console.log('Tasks:', tasks.length);
+    console.log('Is Loading:', isLoading);
+    console.log('Is Auth:', isAuthenticated);
+  }, [columns, tasks, isLoading, isAuthenticated]);
 
   useEffect(() => {
     if (isAuthenticated === false) {
@@ -71,11 +82,37 @@ export default function DashboardPage() {
     setIsLoading(true);
     try {
       const data = await getBoard(boardId);
+      console.log('=== LOAD BOARD ===');
+      console.log('Board:', data);
+      console.log('Columns from /boards/{id}:', data.columns?.length || 0);
+      
+      // Загрузить колонки отдельным запросом (если не вернулись с доской)
+      let columns = data.columns || [];
+      if (columns.length === 0) {
+        console.log('No columns in board response, fetching separately...');
+        const columnsResponse = await fetch(`${API_URL}/api/boards/${boardId}/columns`, {
+          headers: {
+            'Authorization': `Bearer ${useUserStore.getState().token ? `Bearer ${useUserStore.getState().token}` : ''}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (columnsResponse.ok) {
+          columns = await columnsResponse.json();
+          console.log('Columns from separate request:', columns.length);
+        }
+      }
+      
+      if (columns.length > 0) {
+        columns.forEach((c, i) => {
+          console.log(`  Column ${i+1}: ${c.title} (ID: ${c.id})`);
+        });
+      }
+      
       setBoard(data);
-      setColumns(data.columns || []);
+      setColumns(columns);
     } catch (error) {
       toast.error('Failed to load board');
-      console.error(error);
+      console.error('Load board error:', error);
     } finally {
       setIsLoading(false);
     }
@@ -101,21 +138,21 @@ export default function DashboardPage() {
     if (!task) return;
 
     // If dropped on a different column
-    if (task.columnId !== newColumnId) {
+    if (task.column_id !== newColumnId) {
       // Calculate new position
-      const columnTasks = tasks.filter(t => t.columnId === newColumnId);
+      const columnTasks = tasks.filter(t => t.column_id === newColumnId);
       const newPosition = columnTasks.length;
 
       try {
         // Optimistic update
-        useBoardStore.getState().updateTask(taskId, { columnId: newColumnId, position: newPosition });
-        
+        useBoardStore.getState().updateTask(taskId, { column_id: newColumnId, position: newPosition });
+
         // API call
         await moveTask(taskId, newColumnId, newPosition);
         toast.success('Task moved');
       } catch (error) {
         // Rollback on error
-        useBoardStore.getState().updateTask(taskId, { columnId: task.columnId, position: task.position });
+        useBoardStore.getState().updateTask(taskId, { column_id: task.column_id, position: task.position });
         toast.error('Failed to move task');
         console.error(error);
       }
@@ -123,7 +160,8 @@ export default function DashboardPage() {
   };
 
   const handleTaskClick = (task) => {
-    // Open task detail modal
+    // Открыть модальное окно задачи
+    setActiveTask(task);
   };
 
   const handleAddTask = (columnId) => {
@@ -131,14 +169,90 @@ export default function DashboardPage() {
     setIsAddTaskModalOpen(true);
   };
 
+  const handleDeleteColumn = async (columnId, columnName) => {
+    if (!confirm(`Delete column "${columnName}"? All tasks in this column will be deleted.`)) {
+      return;
+    }
+    
+    try {
+      await deleteColumn(boardId, columnId);
+      
+      // Обновить состояние
+      setColumns(columns.filter(c => c.id !== columnId));
+      toast.success('Column deleted');
+    } catch (error) {
+      toast.error('Failed to delete column');
+      console.error(error);
+    }
+  };
+
   const handleTaskCreated = (newTask) => {
-    // Task is added optimistically via socket event
+    // Обновить задачи после создания
+    loadTasks();
   };
 
   const handleShowStats = async () => {
     const data = await loadStats();
     setStatsData(data);
     setIsStatsOpen(true);
+  };
+
+  const handleAddColumn = async () => {
+    // Функция для чтения куки
+    const getCookie = (name) => {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop().split(';').shift();
+      return null;
+    };
+    
+    // Читать токен из куки
+    const t = getCookie('token');
+    
+    console.log('Token from cookie:', t ? t.substring(0, 50) + '...' : 'MISSING');
+    
+    if (!t) {
+      toast.error('Not authenticated. Please login again.');
+      return;
+    }
+    
+    const columnName = prompt('Enter column name:');
+    if (!columnName) return;
+    
+    try {
+      const response = await fetch(`http://localhost/api/boards/${boardId}/columns`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${t}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          title: columnName,
+          position: columns.length
+        })
+      });
+      
+      console.log('Response status:', response.status);
+      
+      if (response.ok) {
+        const newColumn = await response.json();
+        console.log('Column created:', newColumn);
+        
+        // Добавить колонку в state (без reload!)
+        setColumns([...columns, newColumn]);
+        toast.success('Column created!');
+        
+        // НЕ делаем reload - колонка уже в state
+        // window.location.reload(); ← УБРАТЬ!
+      } else {
+        const error = await response.json().catch(() => ({}));
+        console.error('Error response:', error);
+        toast.error(error.detail?.message || 'Failed to create column');
+      }
+    } catch (error) {
+      console.error('Fetch error:', error);
+      toast.error('Failed to create column');
+    }
   };
 
   const toggleDarkMode = () => {
@@ -198,6 +312,11 @@ export default function DashboardPage() {
                 Stats
               </Button>
 
+              <Button variant="ghost" size="sm" onClick={handleAddColumn}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Column
+              </Button>
+
               <Button variant="ghost" size="sm">
                 <Share2 className="w-4 h-4 mr-2" />
                 Share
@@ -239,9 +358,10 @@ export default function DashboardPage() {
               <BoardColumn
                 key={column.id}
                 column={column}
-                tasks={tasks.filter(t => t.columnId === column.id).sort((a, b) => a.position - b.position)}
+                tasks={tasks.filter(t => t.column_id === column.id).sort((a, b) => a.position - b.position)}
                 onTaskClick={handleTaskClick}
                 onAddTask={handleAddTask}
+                onDeleteColumn={handleDeleteColumn}
               />
             ))}
           </div>
@@ -275,7 +395,7 @@ export default function DashboardPage() {
 
       {/* Task Detail Modal */}
       <TaskDetailModal
-        isOpen={!!activeTask && !activeTask.dragging}
+        isOpen={!!activeTask?.id && !activeTask.dragging}
         onClose={() => setActiveTask(null)}
         taskId={activeTask?.id}
         boardId={boardId}

@@ -145,6 +145,7 @@ class TaskCreate(TaskBase):
     """Schema for creating a task."""
     column_id: UUID
     assignee_id: Optional[UUID] = None
+    position: Optional[int] = None
 
 
 class TaskUpdate(BaseModel):

@@ -88,7 +88,7 @@ app.add_middleware(
 app.include_router(internal.router, prefix="/internal", tags=["Internal"])
 
 
-@app.websocket("/ws")
+@app.websocket("/socket.io/")
 async def websocket_endpoint(websocket: WebSocket):
     """
     WebSocket endpoint for real-time communication.

@@ -33,9 +33,12 @@ export default function AddTaskForm({ isOpen, onClose, columnId, boardId, onSucc
     setIsLoading(true);
     try {
       const newTask = await createTask({
-        ...data,
-        boardId,
-        columnId,
+        title: data.title,
+        description: data.description,
+        priority: data.priority,
+        deadline: data.deadline,
+        column_id: columnId,
+        position: 0,
       });
       toast.success('Task created');
       onSuccess(newTask);

@@ -1,0 +1,119 @@
+// ============================================
+// ПРОВЕРКА ЗАДАЧ И КОЛОНОК В БД
+// СКОПИРОВАТЬ В CONSOLE (F12)
+// ============================================
+
+console.log('=== ПРОВЕРКА TOKEN ===');
+
+// Проверить токен из localStorage
+const storage = JSON.parse(localStorage.getItem('user-storage') || '{}');
+const tokenFromStorage = storage.state?.token;
+console.log('Token from localStorage:', tokenFromStorage ? 'EXISTS ✅' : 'MISSING ❌');
+if (tokenFromStorage) {
+  console.log('Token (first 50 chars):', tokenFromStorage.substring(0, 50) + '...');
+}
+
+// Проверить токен из cookie
+const getCookie = (name) => {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(';').shift();
+  return null;
+};
+
+const tokenFromCookie = getCookie('token');
+console.log('Token from cookie:', tokenFromCookie ? 'EXISTS ✅' : 'MISSING ❌');
+if (tokenFromCookie) {
+  console.log('Token (first 50 chars):', tokenFromCookie.substring(0, 50) + '...');
+}
+
+// Использовать токен из cookie (если есть) или из localStorage
+const token = tokenFromCookie || tokenFromStorage;
+
+console.log('\n=== ПРОВЕРКА BOARD ID ===');
+const boardId = window.location.pathname.split('/').pop();
+console.log('Board ID:', boardId);
+
+console.log('\n=== ЗАПРОС ЗАДАЧ ===');
+
+// Запросить задачи
+fetch(`http://localhost/api/tasks?boardId=${boardId}`, {
+  headers: {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  }
+})
+.then(r => {
+  console.log('Response Status:', r.status);
+  if (r.status === 401) {
+    console.error('❌ 401 Unauthorized - Token invalid or expired');
+    console.error('Please login again!');
+  } else if (r.status === 404) {
+    console.error('❌ 404 Not Found - API endpoint not found');
+  } else if (r.status === 500) {
+    console.error('❌ 500 Internal Server Error - Backend error');
+  }
+  return r.json();
+})
+.then(tasks => {
+  console.log('\n=== TASKS ===');
+  console.log('Count:', tasks.length);
+  
+  if (tasks.length === 0) {
+    console.log('⚠️ No tasks found in database!');
+    console.log('Tasks should be created but not showing up');
+  } else {
+    console.log('✅ Tasks found in database!');
+    tasks.forEach((task, i) => {
+      console.log(`  ${i+1}. ${task.title}`);
+      console.log(`     ID: ${task.id}`);
+      console.log(`     Column: ${task.column_id}`);
+      console.log(`     Priority: ${task.priority}`);
+    });
+  }
+})
+.catch(e => {
+  console.error('\n❌ ERROR:', e.message);
+  console.error('Check if backend is running!');
+});
+
+console.log('\n=== ЗАПРОС КОЛОНОК ===');
+
+// Запросить колонки
+fetch(`http://localhost/api/boards/${boardId}/columns`, {
+  headers: {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  }
+})
+.then(r => {
+  console.log('Response Status:', r.status);
+  return r.json();
+})
+.then(columns => {
+  console.log('\n=== COLUMNS ===');
+  console.log('Count:', columns.length);
+  
+  if (columns.length === 0) {
+    console.log('⚠️ No columns found in database!');
+  } else {
+    console.log('✅ Columns found in database!');
+    columns.forEach((col, i) => {
+      console.log(`  ${i+1}. ${col.title}`);
+      console.log(`     ID: ${col.id}`);
+      console.log(`     Position: ${col.position}`);
+    });
+  }
+})
+.catch(e => {
+  console.error('\n❌ ERROR:', e.message);
+});
+
+// ============================================
+// ИНСТРУКЦИЯ:
+// 1. Откройте http://localhost:3000/dashboard/{ID}
+// 2. Нажмите F12 → Console
+// 3. Скопируйте весь этот код
+// 4. Вставьте в Console и нажмите Enter
+// 5. Скиньте результат разработчику
+// ============================================

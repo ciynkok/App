@@ -203,7 +203,8 @@ export default function HomePage() {
                   
                   <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
                     <span>
-                      {format(new Date(board.createdAt), 'MMM d, yyyy')}
+                      {/*format(new Date(board.createdAt), 'MMM d, yyyy')*/}
+                      {board.createdAt ? format(new Date(board.createdAt), 'MMM d, yyyy') : 'N/A'}
                     </span>
                     <div className="flex items-center">
                       <Users className="w-3 h-3 mr-1" />

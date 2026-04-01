@@ -207,7 +207,7 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, boardId }) {
                 {task.deadline && (
                   <Badge variant="default">
                     <Calendar className="w-3 h-3 mr-1" />
-                    {format(new Date(task.deadline), 'MMM d, yyyy')}
+                    {task.deadline ? format(new Date(task.deadline), 'MMM d, yyyy') : 'No deadline'}
                   </Badge>
                 )}
                 {task.assignee && (
@@ -254,11 +254,11 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, boardId }) {
                         {comment.author?.name || 'Anonymous'}
                       </span>
                       <span className="text-xs text-gray-500 dark:text-gray-400">
-                        {format(new Date(comment.createdAt), 'MMM d, HH:mm')}
+                        {comment.createdAt ? format(new Date(comment.createdAt), 'MMM d, HH:mm') : 'Just now'}
                       </span>
                     </div>
                     <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                      {comment.text}
+                      {comment.content || comment.text}
                     </p>
                     {user && comment.authorId === user.id && (
                       <button
