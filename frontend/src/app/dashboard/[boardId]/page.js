@@ -220,7 +220,7 @@ export default function DashboardPage() {
     if (!columnName) return;
     
     try {
-      const response = await fetch(`http://localhost/api/boards/${boardId}/columns`, {
+      const response = await fetch(`${API_URL}/api/boards/${boardId}/columns`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${t}`,

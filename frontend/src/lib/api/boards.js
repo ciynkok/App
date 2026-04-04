@@ -24,6 +24,12 @@ async function fetchWithAuth(url, options = {}) {
     throw new Error(error.message || 'Request failed');
   }
 
+  // Handle empty responses (e.g., DELETE requests returning 200/204)
+  const contentLength = response.headers.get('content-length');
+  if (contentLength === '0' || contentLength === null) {
+    return null;
+  }
+
   return response.json();
 }
 
