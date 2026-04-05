@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useCallback } from 'react';
-import { socket } from '../lib/socket';
+import { socket, emit } from '../lib/socket';
 import { useBoardStore } from '../store/boardStore';
 import { getTasks, getComments } from '../lib/api/tasks';
 import { getBoardStats } from '../lib/api/boards';
@@ -65,12 +65,12 @@ export function useBoard(boardId) {
 
   // Join board room
   const joinBoard = useCallback(() => {
-    socket.emit('join:board', { boardId });
+    emit('join:board', { boardId });
   }, [boardId]);
 
   // Leave board room
   const leaveBoard = useCallback(() => {
-    socket.emit('leave:board', { boardId });
+    emit('leave:board', { boardId });
   }, [boardId]);
 
   // Subscribe to board events

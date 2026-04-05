@@ -2,7 +2,7 @@
 fastapi==0.109.2
 uvicorn[standard]==0.27.1
 python-multipart==0.0.6
-websockets==12.0
+python-socketio[asyncio]==5.11.0
 
 # Redis
 redis==5.0.1

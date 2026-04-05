@@ -1,25 +1,32 @@
 """
-Realtime Service - FastAPI WebSocket server.
-Manages WebSocket connections, board rooms, chat, and task locks.
+Realtime Service - Socket.IO server.
+Manages WebSocket connections via Socket.IO, broadcasts task events, chat, and presence.
 """
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
-from fastapi.middleware.cors import CORSMiddleware
-from starlette.websockets import WebSocketState
+
+import socketio
+from fastapi import FastAPI
 
 from src.config.settings import settings
 from src.config.redis import redis_client
-from src.middleware.ws_auth import authenticate_websocket, WebSocketAuthenticationError
-from src.handlers.websocket import ConnectionManager
-from src.handlers.board import handle_join, handle_leave
-from src.handlers.chat import handle_message
-from src.handlers.task import handle_lock, handle_unlock
+from src.middleware.ws_auth import authenticate_socket
 from src.routes import internal
 from src.services.pubsub import pubsub_service
 
-# Create connection manager instance
-connection_manager = ConnectionManager()
+# Create Socket.IO server instance
+sio = socketio.AsyncServer(
+    async_mode='asgi',
+    cors_allowed_origins=settings.cors_origins,
+    logger=settings.debug,
+    engineio_logger=True,
+)
+
+# Socket.IO ASGI app
+socketio_app = socketio.ASGIApp(
+    socketio_server=sio,
+    other_asgi_app=None,  # We'll mount FastAPI routes separately
+)
 
 
 # Configure logging
@@ -30,32 +37,244 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# ─── Socket.IO Event Handlers ───────────────────────────────────────────────
+
+@sio.event
+async def connect(sid: str, environ: dict, auth: dict | None):
+    """Handle new Socket.IO connection."""
+    # Authenticate
+    print(f"!!! CONNECT HANDLER CALLED !!! sid={sid}")
+    print(f"!!! environ keys: {list(environ.keys())}")
+    print(f"!!! auth: {auth}")
+    
+    logger.info(f"=== CONNECT START === sid={sid}")
+    logger.info(f"environ keys: {list(environ.keys())}")
+    logger.info(f"auth dict: {auth}")
+    user = await authenticate_socket(environ, auth)
+    if user is None:
+        logger.warning(f"Socket.IO connect rejected: auth failed for {sid}")
+        return False
+
+    # Attach user info to session
+    await sio.save_session(sid, {"user": user})
+    logger.info(f"Socket.IO connected: sid={sid}, user={user.get('id')}")
+    return True
+
+
+@sio.event
+async def disconnect(sid: str):
+    """Handle Socket.IO disconnection."""
+    session = await sio.get_session(sid)
+    user = session.get("user", {})
+    board_id = session.get("board_id")
+
+    logger.info(f"Socket.IO disconnected: sid={sid}, user={user.get('id')}")
+
+    # Clean up presence if user was on a board
+    if board_id and user.get("id"):
+        from src.services.presence import remove_user_from_board
+        await remove_user_from_board(board_id, user["id"])
+
+        # Notify others
+        await sio.emit("user:left", {
+            "userId": user["id"],
+            "boardId": board_id,
+        }, room=f"board:{board_id}")
+
+
+@sio.on("join:board")
+async def handle_join(sid: str, data: dict):
+    """Handle join:board event."""
+    board_id = data.get("boardId")
+    if not board_id:
+        await sio.emit("error", {"message": "boardId is required"}, room=sid)
+        return
+
+    session = await sio.get_session(sid)
+    user = session.get("user", {})
+    user_id = user.get("id")
+
+    # Join Socket.IO room
+    await sio.enter_room(sid, f"board:{board_id}")
+    session["board_id"] = board_id
+    await sio.save_session(sid, session)
+
+    # Add user to presence
+    if user_id:
+        from src.services.presence import add_user_to_board, get_online_users
+        from src.services.chat import get_chat_history
+
+        await add_user_to_board(board_id, user_id)
+
+        # Send chat history only to this user
+        history = await get_chat_history(board_id)
+        await sio.emit("chat:history", {
+            "boardId": board_id,
+            "messages": history,
+        }, room=sid)
+
+        # Send online users only to this user
+        online_users = await get_online_users(board_id)
+        await sio.emit("user:online", {
+            "boardId": board_id,
+            "users": list(online_users),
+        }, room=sid)
+
+        # Notify others about new user
+        await sio.emit("user:joined", {
+            "userId": user_id,
+            "boardId": board_id,
+            "name": user.get("email", "Anonymous"),
+        }, room=f"board:{board_id}")
+
+
+@sio.on("leave:board")
+async def handle_leave(sid: str, data: dict):
+    """Handle leave:board event."""
+    board_id = data.get("boardId")
+    if not board_id:
+        await sio.emit("error", {"message": "boardId is required"}, room=sid)
+        return
+
+    session = await sio.get_session(sid)
+    user = session.get("user", {})
+    user_id = user.get("id")
+
+    # Remove from presence
+    if user_id:
+        from src.services.presence import remove_user_from_board
+        await remove_user_from_board(board_id, user_id)
+
+        await sio.emit("user:left", {
+            "userId": user_id,
+            "boardId": board_id,
+        }, room=f"board:{board_id}")
+
+    # Leave room
+    await sio.leave_room(sid, f"board:{board_id}")
+    session["board_id"] = None
+    await sio.save_session(sid, session)
+
+
+@sio.on("chat:message")
+async def handle_chat_message(sid: str, data: dict):
+    """Handle chat:message event."""
+    from datetime import datetime
+
+    board_id = data.get("boardId")
+    text = data.get("text")
+
+    if not board_id or not text:
+        await sio.emit("error", {"message": "boardId and text are required"}, room=sid)
+        return
+
+    session = await sio.get_session(sid)
+    user = session.get("user", {})
+    user_id = user.get("id")
+    user_email = user.get("email", "Anonymous")
+
+    if not user_id:
+        await sio.emit("error", {"message": "User not authenticated"}, room=sid)
+        return
+
+    # Create message
+    message = {
+        "from": user_id,
+        "name": user_email,
+        "text": text.strip(),
+        "boardId": board_id,
+        "ts": datetime.utcnow().isoformat(),
+    }
+
+    # Save to Redis
+    from src.services.chat import save_chat_message
+    await save_chat_message(board_id, message)
+
+    # Broadcast to all in room (including sender)
+    await sio.emit("chat:message", message, room=f"board:{board_id}")
+
+
+@sio.on("task:lock")
+async def handle_task_lock(sid: str, data: dict):
+    """Handle task:lock event."""
+    board_id = data.get("boardId")
+    task_id = data.get("taskId")
+
+    if not board_id or not task_id:
+        await sio.emit("error", {"message": "boardId and taskId are required"}, room=sid)
+        return
+
+    session = await sio.get_session(sid)
+    user = session.get("user", {})
+    user_id = user.get("id")
+
+    if not user_id:
+        await sio.emit("error", {"message": "User not authenticated"}, room=sid)
+        return
+
+    from src.services.lock import lock_task
+    acquired = await lock_task(board_id, task_id, user_id)
+
+    if acquired:
+        await sio.emit("task:locked", {
+            "taskId": task_id,
+            "boardId": board_id,
+            "userId": user_id,
+        }, room=f"board:{board_id}")
+    else:
+        await sio.emit("task:lock:failed", {
+            "taskId": task_id,
+            "boardId": board_id,
+            "message": "Task is already locked",
+        }, room=sid)
+
+
+@sio.on("task:unlock")
+async def handle_task_unlock(sid: str, data: dict):
+    """Handle task:unlock event."""
+    board_id = data.get("boardId")
+    task_id = data.get("taskId")
+
+    if not board_id or not task_id:
+        await sio.emit("error", {"message": "boardId and taskId are required"}, room=sid)
+        return
+
+    session = await sio.get_session(sid)
+    user = session.get("user", {})
+    user_id = user.get("id")
+
+    if not user_id:
+        await sio.emit("error", {"message": "User not authenticated"}, room=sid)
+        return
+
+    from src.services.lock import unlock_task
+    released = await unlock_task(board_id, task_id, user_id)
+
+    if released:
+        await sio.emit("task:unlocked", {
+            "taskId": task_id,
+            "boardId": board_id,
+        }, room=f"board:{board_id}")
+    else:
+        await sio.emit("task:unlock:failed", {
+            "taskId": task_id,
+            "boardId": board_id,
+            "message": "Cannot unlock. Not locked by you or already unlocked",
+        }, room=sid)
+
+
+# ─── Pub/Sub event handler ──────────────────────────────────────────────────
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Application lifespan manager.
-    Handles startup and shutdown events.
-    """
-    # Startup
+    """Application lifespan manager."""
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
     logger.info(f"Redis URL: {settings.redis_url}")
 
-    # Initialize Pub/Sub service event handler
-    def handle_pubsub_event(board_id: str, event: str, payload: dict):
+    # Register Pub/Sub event handler
+    async def handle_pubsub_event(board_id: str, event: str, payload: dict):
         """Handle incoming Pub/Sub events from other instances."""
-        # Broadcast to local clients in the room
-        import asyncio
-
-        async def broadcast():
-            message = {"type": event, "payload": payload}
-            await connection_manager.broadcast_to_room(message, f"board:{board_id}")
-
-        # Run in event loop
-        try:
-            loop = asyncio.get_event_loop()
-            loop.create_task(broadcast())
-        except RuntimeError:
-            pass  # No event loop running
+        await sio.emit(event, payload, room=f"board:{board_id}")
 
     pubsub_service.set_event_handler(handle_pubsub_event)
 
@@ -67,95 +286,20 @@ async def lifespan(app: FastAPI):
     await pubsub_service.close()
 
 
-# Create FastAPI app
+# ─── FastAPI app with Socket.IO mounted ─────────────────────────────────────
+
 app = FastAPI(
     title=settings.app_name,
-    description="Real-time WebSocket service for collaborative dashboard",
+    description="Real-time Socket.IO service for collaborative dashboard",
     version=settings.app_version,
     lifespan=lifespan,
 )
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Mount Socket.IO ASGI app at /socket.io/
+app.mount("/", socketio_app)
 
 # Include internal routes (webhooks from Task Service)
 app.include_router(internal.router, prefix="/internal", tags=["Internal"])
-
-
-@app.websocket("/socket.io/")
-async def websocket_endpoint(websocket: WebSocket):
-    """
-    WebSocket endpoint for real-time communication.
-
-    Expects JWT token in query params: ?token=<jwt_token>
-    """
-    # Authenticate WebSocket connection
-    try:
-        user = await authenticate_websocket(websocket)
-    except WebSocketAuthenticationError as e:
-        logger.warning(f"WebSocket authentication failed: {e.message}")
-        await websocket.close(code=4001)
-        return
-
-    # Accept connection
-    await connection_manager.accept(websocket, user)
-    logger.info(f"WebSocket connected: user={user.get('id')}")
-
-    try:
-        while True:
-            # Receive message
-            data = await websocket.receive_json()
-            event_type = data.get("type")
-            payload = data.get("payload", {})
-
-            logger.debug(f"Received event: {event_type} from user={user.get('id')}")
-
-            # Route event to handler
-            if event_type == "join:board":
-                await handle_join(websocket, payload, connection_manager)
-
-            elif event_type == "leave:board":
-                await handle_leave(websocket, payload, connection_manager)
-
-            elif event_type == "chat:message":
-                await handle_message(websocket, payload, connection_manager)
-
-            elif event_type == "task:lock":
-                await handle_lock(websocket, payload, connection_manager)
-
-            elif event_type == "task:unlock":
-                await handle_unlock(websocket, payload, connection_manager)
-
-            else:
-                logger.warning(f"Unknown event type: {event_type}")
-                await websocket.send_json({
-                    "type": "error",
-                    "message": f"Unknown event type: {event_type}",
-                })
-
-    except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected: user={user.get('id')}")
-
-        # Clean up: remove from presence on all boards
-        if hasattr(websocket, "current_board_id") and websocket.current_board_id:
-            from src.services.presence import remove_user_from_board
-
-            await remove_user_from_board(
-                websocket.current_board_id,
-                user.get("id"),
-            )
-
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}", exc_info=True)
-
-    finally:
-        await connection_manager.disconnect(websocket)
 
 
 @app.get("/health")
@@ -164,7 +308,7 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "realtime",
-        "connections": connection_manager.get_connections_count(),
+        "connections": len(sio.manager.rooms),
     }
 
 

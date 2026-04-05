@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # Application
     app_name: str = "Realtime Service"
     app_version: str = "1.0.0"
-    debug: bool = False
+    debug: bool = True
 
     # Server
     host: str = "0.0.0.0"
@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
 
     # CORS
-    frontend_url: str = "http://localhost:3000"
+    frontend_url: str = "http://localhost"
     
     @property
     def cors_origins(self) -> list:

@@ -2,7 +2,7 @@
 
 import { useEffect, useCallback, useState } from 'react';
 import { useUserStore } from '../store/userStore';
-import { connectSocket, disconnectSocket, socket } from '../lib/socket';
+import { connectSocket, disconnectSocket, socket, emit } from '../lib/socket';
 import toast from 'react-hot-toast';
 
 export function useSocket() {
@@ -45,15 +45,11 @@ export function useSocket() {
       disconnectSocket();
     }
 
-    return () => {
-      disconnectSocket();
-    };
+    return null;
   }, [token]);
 
   const sendMessage = useCallback((event, data) => {
-    if (socket.connected) {
-      socket.emit(event, data);
-    }
+    emit(event, data);
   }, []);
 
   return { isConnected, sendMessage };

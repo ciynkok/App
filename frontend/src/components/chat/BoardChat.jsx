@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { socket } from '../../lib/socket';
+import { socket, emit } from '../../lib/socket';
 import { useUserStore } from '../../store/userStore';
 import { Avatar } from '../ui';
 import { Send, Users } from 'lucide-react';
@@ -19,8 +19,7 @@ export default function BoardChat({ boardId }) {
   useEffect(() => {
     if (!boardId || !isOpen) return;
 
-    // Join board room for chat
-    socket.emit('join:board', { boardId });
+    // join:board уже вызван в useBoard — не дублируем
 
     const handleMessage = (message) => {
       setMessages((prev) => [...prev, message]);
@@ -48,7 +47,7 @@ export default function BoardChat({ boardId }) {
       socket.off('online:users', handleOnlineUsers);
       socket.off('user:joined', handleUserJoined);
       socket.off('user:left', handleUserLeft);
-      socket.emit('leave:board', { boardId });
+      // leave:board вызывается в useBoard при размонтировании — не дублируем
     };
   }, [boardId, isOpen]);
 
@@ -60,10 +59,10 @@ export default function BoardChat({ boardId }) {
 
   const sendMessage = async (e) => {
     e.preventDefault();
-    if (!messageText.trim() || !socket.connected) return;
+    if (!messageText.trim()) return;
 
     setIsSubmitting(true);
-    socket.emit('chat:message', {
+    emit('chat:message', {
       boardId,
       text: messageText,
     });
