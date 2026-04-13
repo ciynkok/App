@@ -296,10 +296,11 @@ app = FastAPI(
 )
 
 # Mount Socket.IO ASGI app at /socket.io/
-app.mount("/", socketio_app)
+app.mount("/socket.io/", socketio_app)
 
 # Include internal routes (webhooks from Task Service)
-app.include_router(internal.router, prefix="/internal", tags=["Internal"])
+# Note: path matches task-service config: /api/webhooks/task-events
+app.include_router(internal.router, prefix="/api/webhooks", tags=["Internal"])
 
 
 @app.get("/health")

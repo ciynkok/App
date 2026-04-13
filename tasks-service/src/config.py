@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     # Real-time Service
     realtime_service_url: str = "http://realtime-service:3003"
-    realtime_webhook_endpoint: str = "/api/webhooks/task-events"
+    realtime_webhook_endpoint: str = "/internal/events"
 
     # JWT (общий с auth-service)
     JWT_SECRET_KEY: str
