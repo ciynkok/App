@@ -7,7 +7,7 @@ import { Modal, Button, Input, Textarea, Select, Avatar, Badge } from '../ui';
 import { updateTask, deleteTask, getComments, addComment, deleteComment } from '../../lib/api/tasks';
 import { useBoardStore } from '../../store/boardStore';
 import { useUserStore } from '../../store/userStore';
-import { X, Trash2, Edit2, Calendar, Flag, User } from 'lucide-react';
+import { CheckCircle2, RotateCcw, Trash2, Edit2, Calendar, Flag } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const PRIORITY_OPTIONS = [
@@ -16,12 +16,33 @@ const PRIORITY_OPTIONS = [
   { value: 'high', label: 'High' },
 ];
 
+const STATUS_OPTIONS = [
+  { value: 'todo', label: 'To do' },
+  { value: 'in_progress', label: 'In progress' },
+  { value: 'review', label: 'Review' },
+  { value: 'done', label: 'Done' },
+];
+
 const getPriorityColor = (priority) => {
   switch (priority) {
     case 'high': return 'danger';
     case 'medium': return 'warning';
     case 'low': return 'success';
     default: return 'default';
+  }
+};
+
+const getStatusMeta = (status) => {
+  switch (status) {
+    case 'in_progress':
+      return { label: 'In progress', variant: 'primary' };
+    case 'review':
+      return { label: 'Review', variant: 'warning' };
+    case 'done':
+      return { label: 'Done', variant: 'success' };
+    case 'todo':
+    default:
+      return { label: 'To do', variant: 'default' };
   }
 };
 
@@ -50,6 +71,7 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, boardId }) {
         title: task.title || '',
         description: task.description || '',
         priority: task.priority || 'medium',
+        status: task.status || 'todo',
         deadline: task.deadline ? format(new Date(task.deadline), 'yyyy-MM-dd') : '',
       });
       loadComments();
@@ -75,6 +97,21 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, boardId }) {
       setIsEditing(false);
     } catch (error) {
       toast.error(error.message || 'Failed to update task');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleStatusChange = async (status) => {
+    if (!taskId || status === task?.status) return;
+
+    setIsLoading(true);
+    try {
+      const updated = await updateTask(taskId, { status });
+      updateTaskStore(taskId, updated);
+      toast.success(status === 'done' ? 'Task marked as done' : 'Task status updated');
+    } catch (error) {
+      toast.error(error.message || 'Failed to update task status');
     } finally {
       setIsLoading(false);
     }
@@ -123,9 +160,10 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, boardId }) {
     }
   };
 
-  const taskComments = comments[taskId] || [];
-
   if (!task) return null;
+
+  const taskComments = comments[taskId] || [];
+  const statusMeta = getStatusMeta(task.status);
 
   return (
     <Modal
@@ -155,6 +193,13 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, boardId }) {
                   options={PRIORITY_OPTIONS}
                   {...register('priority')}
                 />
+                <Select
+                  label="Status"
+                  options={STATUS_OPTIONS}
+                  {...register('status')}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
                 <Input
                   label="Deadline"
                   type="date"
@@ -177,29 +222,41 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, boardId }) {
                   {task.title}
                 </h2>
                 <div className="flex items-center space-x-2">
-                  {user && (task.assigneeId === user.id || task.createdBy === user.id) && (
-                    <>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setIsEditing(true)}
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleDelete}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </>
-                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsEditing(true)}
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleStatusChange(task.status === 'done' ? 'todo' : 'done')}
+                    disabled={isLoading}
+                    title={task.status === 'done' ? 'Mark as not done' : 'Mark as done'}
+                  >
+                    {task.status === 'done' ? (
+                      <RotateCcw className="w-4 h-4" />
+                    ) : (
+                      <CheckCircle2 className="w-4 h-4" />
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleDelete}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
                 </div>
               </div>
 
               <div className="flex flex-wrap gap-2 mb-4">
+                <Badge variant={statusMeta.variant}>
+                  {statusMeta.label}
+                </Badge>
                 <Badge variant={getPriorityColor(task.priority)}>
                   <Flag className="w-3 h-3 mr-1" />
                   {task.priority}
