@@ -70,3 +70,27 @@ export async function deleteColumn(boardId, columnId) {
 export async function getBoardStats(boardId) {
   return fetchWithAuth(`${API_URL}/api/boards/${boardId}/stats`);
 }
+
+export async function getBoardMembers(boardId) {
+  return fetchWithAuth(`${API_URL}/api/boards/${boardId}/members`);
+}
+
+export async function addBoardMember(boardId, data) {
+  return fetchWithAuth(`${API_URL}/api/boards/${boardId}/members`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateBoardMember(boardId, memberId, data) {
+  return fetchWithAuth(`${API_URL}/api/boards/${boardId}/members/${memberId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function removeBoardMember(boardId, memberId) {
+  return fetchWithAuth(`${API_URL}/api/boards/${boardId}/members/${memberId}`, {
+    method: 'DELETE',
+  });
+}
