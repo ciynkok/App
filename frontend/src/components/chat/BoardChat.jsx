@@ -1,11 +1,40 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { format } from 'date-fns';
+import { Send, Users } from 'lucide-react';
 import { socket, emit } from '../../lib/socket';
 import { useUserStore } from '../../store/userStore';
 import { Avatar } from '../ui';
-import { Send, Users } from 'lucide-react';
-import { format } from 'date-fns';
+
+function normalizeUser(user) {
+  if (!user) {
+    return { id: 'unknown', name: 'Unknown user' };
+  }
+
+  if (typeof user === 'string') {
+    return {
+      id: user,
+      name: user,
+    };
+  }
+
+  const id = user.id || user.userId || user.user_id || user.email || 'unknown';
+  const name = user.name || user.email || user.userId || user.user_id || id;
+
+  return { id, name };
+}
+
+function normalizeMessage(message) {
+  return {
+    id: message.id || `${message.from || message.authorId || 'unknown'}:${message.ts || message.createdAt || Date.now()}`,
+    boardId: message.boardId,
+    text: message.text || '',
+    authorId: message.authorId || message.from || null,
+    authorName: message.author?.name || message.name || 'User',
+    createdAt: message.createdAt || message.ts || new Date().toISOString(),
+  };
+}
 
 export default function BoardChat({ boardId }) {
   const { user } = useUserStore();
@@ -17,37 +46,86 @@ export default function BoardChat({ boardId }) {
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
-    if (!boardId || !isOpen) return;
+    if (!boardId) return;
 
-    // join:board уже вызван в useBoard — не дублируем
+    const handleHistory = (payload) => {
+      if (payload?.boardId && payload.boardId !== boardId) {
+        return;
+      }
+
+      setMessages((payload?.messages || []).map(normalizeMessage));
+    };
 
     const handleMessage = (message) => {
-      setMessages((prev) => [...prev, message]);
+      if (message?.boardId && message.boardId !== boardId) {
+        return;
+      }
+
+      setMessages((prev) => [...prev, normalizeMessage(message)]);
     };
 
-    const handleOnlineUsers = (users) => {
-      setOnlineUsers(users);
+    const handleOnlineUsers = (payload) => {
+      const users = Array.isArray(payload) ? payload : payload?.users;
+      setOnlineUsers((users || []).map(normalizeUser));
     };
 
-    const handleUserJoined = (user) => {
-      setOnlineUsers((prev) => [...prev, user]);
+    const handleUserJoined = (nextUser) => {
+      if (nextUser?.boardId && nextUser.boardId !== boardId) {
+        return;
+      }
+
+      const normalizedUser = normalizeUser(nextUser);
+      setOnlineUsers((prev) => [
+        ...prev.filter((existingUser) => existingUser.id !== normalizedUser.id),
+        normalizedUser,
+      ]);
     };
 
-    const handleUserLeft = (userId) => {
-      setOnlineUsers((prev) => prev.filter(u => u.id !== userId));
+    const handleUserLeft = (payload) => {
+      const userId = typeof payload === 'string' ? payload : payload?.userId || payload?.id;
+      if (!userId) {
+        return;
+      }
+
+      setOnlineUsers((prev) => prev.filter((currentUser) => currentUser.id !== userId));
     };
 
+    socket.on('chat:history', handleHistory);
     socket.on('chat:message', handleMessage);
+    socket.on('user:online', handleOnlineUsers);
     socket.on('online:users', handleOnlineUsers);
     socket.on('user:joined', handleUserJoined);
     socket.on('user:left', handleUserLeft);
 
     return () => {
+      socket.off('chat:history', handleHistory);
       socket.off('chat:message', handleMessage);
+      socket.off('user:online', handleOnlineUsers);
       socket.off('online:users', handleOnlineUsers);
       socket.off('user:joined', handleUserJoined);
       socket.off('user:left', handleUserLeft);
-      // leave:board вызывается в useBoard при размонтировании — не дублируем
+    };
+  }, [boardId]);
+
+  useEffect(() => {
+    if (!boardId || !isOpen) return;
+
+    emit('chat:sync', { boardId });
+  }, [boardId, isOpen]);
+
+  useEffect(() => {
+    if (!boardId) return;
+
+    const handleConnect = () => {
+      if (isOpen) {
+        emit('chat:sync', { boardId });
+      }
+    };
+
+    socket.on('connect', handleConnect);
+
+    return () => {
+      socket.off('connect', handleConnect);
     };
   }, [boardId, isOpen]);
 
@@ -57,8 +135,8 @@ export default function BoardChat({ boardId }) {
     }
   }, [messages]);
 
-  const sendMessage = async (e) => {
-    e.preventDefault();
+  const sendMessage = async (event) => {
+    event.preventDefault();
     if (!messageText.trim()) return;
 
     setIsSubmitting(true);
@@ -83,7 +161,6 @@ export default function BoardChat({ boardId }) {
 
   return (
     <div className="fixed bottom-4 right-4 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-40 flex flex-col max-h-96">
-      {/* Header */}
       <div className="flex justify-between items-center p-4 border-b dark:border-gray-700">
         <div className="flex items-center space-x-2">
           <h3 className="font-semibold text-gray-900 dark:text-gray-100">
@@ -104,50 +181,54 @@ export default function BoardChat({ boardId }) {
         </button>
       </div>
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.length === 0 ? (
           <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
             No messages yet. Start the conversation!
           </p>
         ) : (
-          messages.map((message, index) => (
-            <div
-              key={index}
-              className={`flex space-x-2 ${
-                message.authorId === user?.id ? 'flex-row-reverse space-x-reverse' : ''
-              }`}
-            >
-              <Avatar name={message.author?.name || 'User'} size="sm" />
-              <div className={`flex-1 ${
-                message.authorId === user?.id ? 'text-right' : ''
-              }`}>
-                <div
-                  className={`inline-block px-3 py-2 rounded-lg ${
-                    message.authorId === user?.id
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
-                  }`}
-                >
-                  <p className="text-sm">{message.text}</p>
+          messages.map((message, index) => {
+            const isOwnMessage = message.authorId === user?.id;
+            const createdAt = new Date(message.createdAt);
+            const timeLabel = Number.isNaN(createdAt.getTime())
+              ? ''
+              : format(createdAt, 'HH:mm');
+
+            return (
+              <div
+                key={`${message.id}-${index}`}
+                className={`flex space-x-2 ${isOwnMessage ? 'flex-row-reverse space-x-reverse' : ''}`}
+              >
+                <Avatar name={message.authorName} size="sm" />
+                <div className={`flex-1 ${isOwnMessage ? 'text-right' : ''}`}>
+                  <div
+                    className={`inline-block px-3 py-2 rounded-lg ${
+                      isOwnMessage
+                        ? 'bg-primary-600 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                    }`}
+                  >
+                    <p className="text-sm">{message.text}</p>
+                  </div>
+                  {timeLabel && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      {timeLabel}
+                    </p>
+                  )}
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  {format(new Date(message.createdAt), 'HH:mm')}
-                </p>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
       <form onSubmit={sendMessage} className="p-3 border-t dark:border-gray-700">
         <div className="flex space-x-2">
           <input
             type="text"
             value={messageText}
-            onChange={(e) => setMessageText(e.target.value)}
+            onChange={(event) => setMessageText(event.target.value)}
             placeholder="Type a message..."
             className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
           />
