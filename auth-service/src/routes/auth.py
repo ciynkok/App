@@ -372,6 +372,58 @@ async def github_callback(request: Request, db: AsyncSession = Depends(get_db)):
     return RedirectResponse(url=redirect_url)
 '''
 
+@router.get("/users/by-email", response_model=UserResponse)
+async def lookup_user_by_email(
+    email: str,
+    user: dict = Depends(check_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Поиск пользователя по email. Используется другими сервисами
+    (через токен пользователя) для разрешения email → user_id."""
+    db_user = await get_user_by_email(db, email.strip())
+
+    if not db_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "USER_NOT_FOUND", "message": "User with this email not found"},
+        )
+
+    return UserResponse(
+        id=str(db_user.id),
+        email=db_user.email,
+        name=db_user.name,
+        avatar_url=db_user.avatar_url,
+    )
+
+
+@router.post("/users/by-ids", response_model=list[UserResponse])
+async def lookup_users_by_ids(
+    payload: dict,
+    user: dict = Depends(check_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Batch lookup пользователей по списку UUID. Тело: {"ids": [...]}"""
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        return []
+
+    from sqlalchemy import select
+    from src.models.user import User
+
+    result = await db.execute(select(User).where(User.id.in_(ids)))
+    users = result.scalars().all()
+
+    return [
+        UserResponse(
+            id=str(u.id),
+            email=u.email,
+            name=u.name,
+            avatar_url=u.avatar_url,
+        )
+        for u in users
+    ]
+
+
 @router.post("/validate")
 async def validate_token(request: Request) -> TokenValidateResponse:
     """

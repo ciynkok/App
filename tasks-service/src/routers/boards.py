@@ -3,9 +3,12 @@ Board API routes for Task Service.
 """
 from typing import List
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from src.config import settings
 from src.database import get_db
 from src.models import Board, BoardMember, Task
 from src.schemas import (
@@ -19,6 +22,7 @@ from src.schemas import (
 )
 from src.middleware import (
     get_current_user_id,
+    require_board_viewer,
     require_board_owner,
     require_board_admin
 )
@@ -26,6 +30,59 @@ from src.webhook import webhook_service
 
 
 router = APIRouter(prefix="/api/boards", tags=["boards"])
+
+
+async def _lookup_user_by_email(email: str, request: Request) -> dict:
+    """Resolve email → user via auth-service, forwarding caller's bearer token."""
+    auth_header = request.headers.get("Authorization", "")
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{settings.auth_service_url}/auth/users/by-email",
+                params={"email": email},
+                headers={"Authorization": auth_header},
+            )
+    except httpx.RequestError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"error": {"code": "AUTH_SERVICE_ERROR", "message": "Failed to reach Auth Service"}},
+        )
+
+    if response.status_code == status.HTTP_404_NOT_FOUND:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": {"code": "USER_NOT_FOUND", "message": "User with this email not found"}},
+        )
+    if response.status_code != status.HTTP_200_OK:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"error": {"code": "AUTH_SERVICE_ERROR", "message": "Auth service returned an error"}},
+        )
+
+    return response.json()
+
+
+async def _fetch_users_by_ids(user_ids: list[str], request: Request) -> dict:
+    """Batch lookup user_id → profile via auth-service. Returns {user_id: profile}.
+    Best-effort: returns empty dict on failure so callers can still respond."""
+    if not user_ids:
+        return {}
+
+    auth_header = request.headers.get("Authorization", "")
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                f"{settings.auth_service_url}/auth/users/by-ids",
+                json={"ids": user_ids},
+                headers={"Authorization": auth_header},
+            )
+    except httpx.RequestError:
+        return {}
+
+    if response.status_code != status.HTTP_200_OK:
+        return {}
+
+    return {item["id"]: item for item in response.json()}
 
 
 @router.post("", response_model=BoardResponse, status_code=status.HTTP_201_CREATED)
@@ -92,7 +149,7 @@ async def get_board(
     Get board details with statistics.
     """
     # Check access
-    await require_board_admin(board_id, user_id, db)
+    await require_board_viewer(board_id, user_id, db)
     
     # Get board
     result = await db.execute(select(Board).where(Board.id == board_id))
@@ -208,61 +265,87 @@ async def delete_board(
 async def add_board_member(
     board_id: UUID,
     member_data: BoardMemberCreate,
+    request: Request,
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Add a member to the board.
+    Add a member to the board by email.
     Only board admins can add members.
     """
     # Check admin access
     await require_board_admin(board_id, user_id, db)
-    
+
+    # Resolve email → user via auth-service
+    profile = await _lookup_user_by_email(member_data.email, request)
+    target_user_id = UUID(profile["id"])
+
     # Check if member already exists
     existing_result = await db.execute(
         select(BoardMember).where(
             BoardMember.board_id == board_id,
-            BoardMember.user_id == member_data.user_id
+            BoardMember.user_id == target_user_id
         )
     )
     existing = existing_result.scalar_one_or_none()
-    
+
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"error": {"code": "MEMBER_EXISTS", "message": "User is already a board member"}}
         )
-    
+
     # Create member
     member = BoardMember(
         board_id=board_id,
-        user_id=member_data.user_id,
+        user_id=target_user_id,
         role=member_data.role
     )
     db.add(member)
     await db.commit()
     await db.refresh(member)
-    
-    return member
+
+    return BoardMemberResponse(
+        board_id=member.board_id,
+        user_id=member.user_id,
+        role=member.role,
+        email=profile.get("email"),
+        name=profile.get("name"),
+        avatar_url=profile.get("avatar_url"),
+    )
 
 
 @router.get("/{board_id}/members", response_model=List[BoardMemberResponse])
 async def list_board_members(
     board_id: UUID,
+    request: Request,
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    List all members of a board.
+    List all members of a board, enriched with email/name from auth-service.
     """
     # Check access
     await require_board_admin(board_id, user_id, db)
-    
+
     result = await db.execute(
         select(BoardMember).where(BoardMember.board_id == board_id)
     )
     members = result.scalars().all()
-    return members
+
+    profiles = await _fetch_users_by_ids([str(m.user_id) for m in members], request)
+
+    return [
+        BoardMemberResponse(
+            board_id=m.board_id,
+            user_id=m.user_id,
+            role=m.role,
+            email=(profiles.get(str(m.user_id)) or {}).get("email"),
+            name=(profiles.get(str(m.user_id)) or {}).get("name"),
+            avatar_url=(profiles.get(str(m.user_id)) or {}).get("avatar_url"),
+        )
+        for m in members
+    ]
 
 
 @router.put("/{board_id}/members/{member_id}", response_model=BoardMemberResponse)
