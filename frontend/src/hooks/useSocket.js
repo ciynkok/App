@@ -44,8 +44,6 @@ export function useSocket() {
     } else {
       disconnectSocket();
     }
-
-    return null;
   }, [token]);
 
   const sendMessage = useCallback((event, data) => {
