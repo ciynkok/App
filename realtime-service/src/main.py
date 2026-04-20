@@ -2,6 +2,7 @@
 Realtime Service - Socket.IO server.
 Manages WebSocket connections via Socket.IO, broadcasts task events, chat, and presence.
 """
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -35,6 +36,24 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+async def emit_board_sync(sid: str, board_id: str):
+    """Send chat history and presence snapshot to one socket."""
+    from src.services.chat import get_chat_history
+    from src.services.presence import get_online_users
+
+    history = await get_chat_history(board_id)
+    await sio.emit("chat:history", {
+        "boardId": board_id,
+        "messages": history,
+    }, room=sid)
+
+    online_users = await get_online_users(board_id)
+    await sio.emit("user:online", {
+        "boardId": board_id,
+        "users": list(online_users),
+    }, room=sid)
 
 
 # ─── Socket.IO Event Handlers ───────────────────────────────────────────────
@@ -101,31 +120,18 @@ async def handle_join(sid: str, data: dict):
 
     # Add user to presence
     if user_id:
-        from src.services.presence import add_user_to_board, get_online_users
-        from src.services.chat import get_chat_history
+        from src.services.presence import add_user_to_board, is_user_online
 
+        already_online = await is_user_online(board_id, user_id)
         await add_user_to_board(board_id, user_id)
+        await emit_board_sync(sid, board_id)
 
-        # Send chat history only to this user
-        history = await get_chat_history(board_id)
-        await sio.emit("chat:history", {
-            "boardId": board_id,
-            "messages": history,
-        }, room=sid)
-
-        # Send online users only to this user
-        online_users = await get_online_users(board_id)
-        await sio.emit("user:online", {
-            "boardId": board_id,
-            "users": list(online_users),
-        }, room=sid)
-
-        # Notify others about new user
-        await sio.emit("user:joined", {
-            "userId": user_id,
-            "boardId": board_id,
-            "name": user.get("email", "Anonymous"),
-        }, room=f"board:{board_id}")
+        if not already_online:
+            await sio.emit("user:joined", {
+                "userId": user_id,
+                "boardId": board_id,
+                "name": user.get("email", "Anonymous"),
+            }, room=f"board:{board_id}")
 
 
 @sio.on("leave:board")
@@ -154,6 +160,22 @@ async def handle_leave(sid: str, data: dict):
     await sio.leave_room(sid, f"board:{board_id}")
     session["board_id"] = None
     await sio.save_session(sid, session)
+
+
+@sio.on("chat:sync")
+async def handle_chat_sync(sid: str, data: dict):
+    """Send current chat state for an already joined board."""
+    board_id = data.get("boardId")
+    if not board_id:
+        await sio.emit("error", {"message": "boardId is required"}, room=sid)
+        return
+
+    session = await sio.get_session(sid)
+    if session.get("board_id") != board_id:
+        await sio.emit("error", {"message": "Join board before requesting chat sync"}, room=sid)
+        return
+
+    await emit_board_sync(sid, board_id)
 
 
 @sio.on("chat:message")
@@ -278,12 +300,26 @@ async def lifespan(app: FastAPI):
 
     pubsub_service.set_event_handler(handle_pubsub_event)
 
-    yield
+    # Start Pub/Sub listener as a background task so Task Service webhooks
+    # actually reach connected sockets.
+    subscriber_task = asyncio.create_task(
+        pubsub_service.subscribe_to_events(),
+        name="pubsub-subscriber",
+    )
 
-    # Shutdown
-    logger.info("Shutting down Realtime Service")
-    await redis_client.close()
-    await pubsub_service.close()
+    try:
+        yield
+    finally:
+        logger.info("Shutting down Realtime Service")
+        subscriber_task.cancel()
+        try:
+            await subscriber_task
+        except asyncio.CancelledError:
+            pass
+        except Exception:  # noqa: BLE001
+            logger.exception("Pub/Sub subscriber task crashed during shutdown")
+        await pubsub_service.close()
+        await redis_client.close()
 
 
 # ─── FastAPI app with Socket.IO mounted ─────────────────────────────────────
@@ -298,9 +334,11 @@ app = FastAPI(
 # Mount Socket.IO ASGI app at /socket.io/
 app.mount("/socket.io/", socketio_app)
 
-# Include internal routes (webhooks from Task Service)
-# Note: path matches task-service config: /api/webhooks/task-events
+# Include internal routes (webhooks from Task Service).
+# Mounted under both /api/webhooks and /internal so the Task Service default
+# (realtime_webhook_endpoint=/internal/events) and the nginx-routed form both work.
 app.include_router(internal.router, prefix="/api/webhooks", tags=["Internal"])
+app.include_router(internal.router, prefix="/internal", tags=["Internal"])
 
 
 @app.get("/health")

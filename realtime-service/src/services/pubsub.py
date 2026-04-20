@@ -2,11 +2,19 @@
 Redis Pub/Sub service for horizontal scaling.
 Synchronizes events across multiple Realtime Service instances.
 """
+import asyncio
+import inspect
 import json
-from typing import Callable, Dict, Any, Optional
+import logging
+from typing import Awaitable, Callable, Dict, Any, Optional, Union
 from redis.asyncio import Redis
 from src.config.redis import redis_client
 from src.config.settings import settings
+
+
+logger = logging.getLogger(__name__)
+
+EventHandler = Callable[[str, str, Dict[str, Any]], Union[None, Awaitable[None]]]
 
 
 # Channel prefix for board events
@@ -19,7 +27,7 @@ class PubSubService:
     def __init__(self):
         self._publisher: Optional[Redis] = None
         self._subscriber: Optional[Redis] = None
-        self._event_handler: Optional[Callable] = None
+        self._event_handler: Optional[EventHandler] = None
 
     async def get_publisher(self) -> Redis:
         """Get publisher Redis client."""
@@ -60,12 +68,13 @@ class PubSubService:
 
         await publisher.publish(channel, message)
 
-    def set_event_handler(self, handler: Callable[[str, str, Dict[str, Any]], None]):
+    def set_event_handler(self, handler: EventHandler):
         """
         Set the event handler callback.
 
         Args:
-            handler: Function(board_id, event, payload) to handle incoming events
+            handler: Function(board_id, event, payload) to handle incoming events.
+                     May be sync or async — coroutines are awaited.
         """
         self._event_handler = handler
 
@@ -82,10 +91,13 @@ class PubSubService:
 
         # Subscribe to all board channels
         await pubsub.psubscribe(f"{CHANNEL_PREFIX}*")
+        logger.info("Pub/Sub subscriber started on pattern %s*", CHANNEL_PREFIX)
 
-        # Listen for messages
-        async for message in pubsub.listen():
-            if message["type"] == "pmessage":
+        try:
+            async for message in pubsub.listen():
+                if message.get("type") != "pmessage":
+                    continue
+
                 channel = message["channel"]
                 data = message["data"]
 
@@ -96,12 +108,24 @@ class PubSubService:
                     parsed = json.loads(data)
                     event = parsed["event"]
                     payload = parsed["payload"]
-
-                    # Call the event handler
-                    self._event_handler(board_id, event, payload)
-
                 except (json.JSONDecodeError, KeyError) as e:
-                    print(f"Error parsing pubsub message: {e}")
+                    logger.warning("Error parsing pubsub message: %s", e)
+                    continue
+
+                try:
+                    result = self._event_handler(board_id, event, payload)
+                    if inspect.isawaitable(result):
+                        await result
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:  # noqa: BLE001
+                    logger.exception("Pub/Sub handler failed for %s: %s", event, e)
+        except asyncio.CancelledError:
+            logger.info("Pub/Sub subscriber stopping")
+            raise
+        finally:
+            await pubsub.punsubscribe(f"{CHANNEL_PREFIX}*")
+            await pubsub.close()
 
     async def close(self):
         """Close Pub/Sub connections."""

@@ -52,6 +52,72 @@ class ErrorResponse(BaseModel):
     details: str | None = None
 
 
+def _build_payload(event: WebhookEvent) -> Dict[str, Any]:
+    """
+    Build a normalized payload for the given webhook event.
+
+    The resulting object is what WebSocket clients receive via `socket.on(event, ...)`.
+    Field names match the REST API shape (snake_case) so that the frontend can
+    spread the payload directly into the in-memory task/comment objects.
+    """
+    data = dict(event.data or {})
+    entity_id = str(event.entity_id)
+    board_id = str(event.board_id)
+    user_id = str(event.user_id)
+    timestamp = event.timestamp.isoformat()
+
+    if event.entity_type == "task":
+        # `task.moved` carries {old_column_id, new_column_id, position}; translate
+        # new_column_id to the canonical column_id so the frontend can apply it as
+        # a partial update.
+        if "new_column_id" in data:
+            data["column_id"] = data.pop("new_column_id")
+        data.pop("old_column_id", None)
+
+        payload: Dict[str, Any] = {
+            "id": entity_id,
+            "board_id": board_id,
+            "user_id": user_id,
+            "timestamp": timestamp,
+            **data,
+        }
+        return payload
+
+    if event.entity_type == "comment":
+        task_id = data.pop("task_id", None)
+        payload = {
+            "id": entity_id,
+            "task_id": task_id,
+            "board_id": board_id,
+            "author_id": user_id,
+            "user_id": user_id,
+            "timestamp": timestamp,
+            **data,
+        }
+        return payload
+
+    if event.entity_type == "column":
+        payload = {
+            "id": entity_id,
+            "board_id": board_id,
+            "user_id": user_id,
+            "timestamp": timestamp,
+            **data,
+        }
+        return payload
+
+    # Fallback — preserve previous shape for unknown entity types.
+    return {
+        "entityType": event.entity_type,
+        "entityId": entity_id,
+        "boardId": board_id,
+        "userId": user_id,
+        "timestamp": timestamp,
+        **data,
+    }
+
+
+@router.post("/task-events", response_model=EventResponse)
 @router.post("/events", response_model=EventResponse)
 async def receive_event(event: WebhookEvent) -> EventResponse:
     """
@@ -76,15 +142,7 @@ async def receive_event(event: WebhookEvent) -> EventResponse:
     # Convert event_type to WebSocket format (e.g., task.created -> task:created)
     ws_event_type = event.event_type.replace(".", ":")
 
-    # Build payload for WebSocket clients
-    payload = {
-        "entityType": event.entity_type,
-        "entityId": str(event.entity_id),
-        "boardId": str(event.board_id),
-        "userId": str(event.user_id),
-        "timestamp": event.timestamp.isoformat(),
-        **(event.data or {}),
-    }
+    payload = _build_payload(event)
 
     # Publish to board channel via Pub/Sub
     # This will broadcast to all clients in the board room
