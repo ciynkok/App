@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
 from src.database import get_db
-from src.models import Task, Column
+from src.models import Task, Column, BoardMember
 from src.schemas import (
     TaskCreate,
     TaskUpdate,
@@ -16,12 +16,35 @@ from src.schemas import (
     TaskResponse,
     TaskFilter
 )
-from src.middleware import require_board_editor, get_current_user_id
+from src.middleware import require_board_editor, require_board_viewer, get_current_user_id
 from src.webhook import webhook_service
 from src.scheduler import deadline_scheduler
 
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+
+
+def _serialize_task(task: Task) -> dict:
+    """Serialize a Task model into a dict matching the REST response shape.
+
+    Kept in sync with TaskResponse so realtime webhook consumers can spread
+    the payload directly into the client-side task object.
+    """
+    created_at = getattr(task, "created_at", None)
+    updated_at = getattr(task, "updated_at", None)
+    deadline = getattr(task, "deadline", None)
+    return {
+        "column_id": str(task.column_id),
+        "title": task.title,
+        "description": task.description,
+        "status": task.status,
+        "priority": task.priority,
+        "position": task.position,
+        "deadline": deadline.isoformat() if deadline else None,
+        "assignee_id": str(task.assignee_id) if task.assignee_id else None,
+        "created_at": created_at.isoformat() if created_at else None,
+        "updated_at": updated_at.isoformat() if updated_at else None,
+    }
 
 
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
@@ -77,13 +100,9 @@ async def create_task(
         task_id=str(task.id),
         board_id=str(task.board_id),
         user_id=user_id,
-        task_data={
-            "title": task.title,
-            "column_id": str(task.column_id),
-            "assignee_id": str(task.assignee_id) if task.assignee_id else None
-        }
+        task_data=_serialize_task(task),
     )
-    
+
     return task
 
 
@@ -106,7 +125,11 @@ async def list_tasks(
     List and filter tasks.
     """
     # Build query
-    query = select(Task)
+    query = (
+        select(Task)
+        .join(BoardMember, Task.board_id == BoardMember.board_id)
+        .where(BoardMember.user_id == UUID(user_id))
+    )
     
     # Apply filters
     conditions = []
@@ -166,7 +189,7 @@ async def get_task(
         )
     
     # Check access
-    await require_board_editor(task.board_id, user_id, db)
+    await require_board_viewer(task.board_id, user_id, db)
     
     return task
 
@@ -233,15 +256,16 @@ async def update_task(
     
     await db.commit()
     await db.refresh(task)
-    
-    # Send webhook
+
+    # Send webhook — include the full serialized task so the frontend can
+    # apply a partial update without refetching.
     await webhook_service.task_updated(
         task_id=str(task.id),
         board_id=str(task.board_id),
         user_id=user_id,
-        task_data=changes
+        task_data={**_serialize_task(task), "changes": changes},
     )
-    
+
     return task
 
 

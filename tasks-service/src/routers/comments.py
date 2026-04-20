@@ -9,7 +9,7 @@ from sqlalchemy import select
 from src.database import get_db
 from src.models import Comment, Task
 from src.schemas import CommentCreate, CommentUpdate, CommentResponse
-from src.middleware import require_board_editor, get_current_user_id
+from src.middleware import require_board_editor, require_board_viewer, get_current_user_id
 from src.webhook import webhook_service
 
 
@@ -38,7 +38,7 @@ async def create_comment(
         )
     
     # Check access
-    await require_board_editor(task.board_id, user_id, db)
+    await require_board_viewer(task.board_id, user_id, db)
     
     # Create comment
     comment = Comment(
@@ -50,16 +50,20 @@ async def create_comment(
     db.add(comment)
     await db.commit()
     await db.refresh(comment)
-    
+
     # Send webhook
     await webhook_service.comment_created(
         comment_id=str(comment.id),
         task_id=str(task_id),
         board_id=str(task.board_id),
         user_id=user_id,
-        comment_data={"content": comment.content}
+        comment_data={
+            "content": comment.content,
+            "author_id": str(comment.author_id),
+            "created_at": comment.created_at.isoformat() if comment.created_at else None,
+        },
     )
-    
+
     return comment
 
 
@@ -84,7 +88,7 @@ async def list_comments(
         )
     
     # Check access
-    await require_board_editor(task.board_id, user_id, db)
+    await require_board_viewer(task.board_id, user_id, db)
     
     # Get comments
     result = await db.execute(
@@ -203,9 +207,13 @@ async def update_comment(
         task_id=str(task_id),
         board_id=str(task.board_id),
         user_id=user_id,
-        comment_data={"content": comment.content}
+        comment_data={
+            "content": comment.content,
+            "author_id": str(comment.author_id),
+            "updated_at": comment.updated_at.isoformat() if getattr(comment, "updated_at", None) else None,
+        },
     )
-    
+
     return comment
 
 

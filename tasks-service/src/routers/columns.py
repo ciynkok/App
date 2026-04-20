@@ -9,7 +9,7 @@ from sqlalchemy import select
 from src.database import get_db
 from src.models import Column, Task
 from src.schemas import ColumnCreate, ColumnUpdate, ColumnResponse, ColumnWithTasks
-from src.middleware import require_board_editor, get_current_user_id
+from src.middleware import require_board_editor, require_board_viewer, get_current_user_id
 from src.webhook import webhook_service
 
 
@@ -63,7 +63,7 @@ async def list_columns(
     Requires viewer role on the board.
     """
     # Check access
-    await require_board_editor(board_id, user_id, db)
+    await require_board_viewer(board_id, user_id, db)
     
     result = await db.execute(
         select(Column)
@@ -86,7 +86,7 @@ async def get_column(
     Requires viewer role on the board.
     """
     # Check access
-    await require_board_editor(board_id, user_id, db)
+    await require_board_viewer(board_id, user_id, db)
     
     # Get column
     result = await db.execute(

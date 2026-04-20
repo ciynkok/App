@@ -77,8 +77,8 @@ class BoardMemberBase(BaseModel):
 
 
 class BoardMemberCreate(BoardMemberBase):
-    """Schema for adding a board member."""
-    user_id: UUID
+    """Schema for adding a board member by email."""
+    email: str = Field(..., min_length=3, max_length=320, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 class BoardMemberUpdate(BaseModel):
@@ -90,7 +90,10 @@ class BoardMemberResponse(BoardMemberBase):
     """Schema for board member response."""
     board_id: UUID
     user_id: UUID
-    
+    email: Optional[str] = None
+    name: Optional[str] = None
+    avatar_url: Optional[str] = None
+
     model_config = ConfigDict(from_attributes=True)
 
 
