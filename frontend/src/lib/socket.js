@@ -1,6 +1,8 @@
 import { io } from 'socket.io-client';
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL;
+// Пустая строка → socket.io-client использует текущий origin (same-origin),
+// что нужно для доступа по локальной сети через nginx.
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL || undefined;
 
 // Очередь сообщений на случай отправки до подключения
 const pendingMessages = [];

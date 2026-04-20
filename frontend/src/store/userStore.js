@@ -19,9 +19,10 @@ export const useUserStore = create((set) => ({
   token: null,
   setUser: (user) => set({ user }),
   setToken: (token) => {
+    const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
     Cookies.set('token', token, {
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      secure: isHttps,
+      sameSite: 'lax',
       expires: 7, // 7 дней — кука не session-only, переживает перезагрузку
     });
     set({ token });

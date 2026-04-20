@@ -28,7 +28,7 @@ async function fetchWithAuth(url, options = {}) {
 }
 
 export async function getTasks(boardId) {
-  return fetchWithAuth(`${API_URL}/api/tasks?boardId=${boardId}`);
+  return fetchWithAuth(`${API_URL}/api/tasks?board_id=${boardId}`);
 }
 
 export async function getTask(taskId) {
