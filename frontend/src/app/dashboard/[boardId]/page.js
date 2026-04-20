@@ -13,10 +13,11 @@ import { useBoardStore } from '../../../store/boardStore';
 import BoardColumn from '../../../components/board/BoardColumn';
 import AddTaskForm from '../../../components/board/AddTaskForm';
 import TaskDetailModal from '../../../components/modals/TaskDetailModal';
+import ShareBoardModal from '../../../components/modals/ShareBoardModal';
 import BoardChat from '../../../components/chat/BoardChat';
 import BurnDownChart from '../../../components/charts/BurnDownChart';
-import { Button, Avatar, Card, Modal } from '../../../components/ui';
-import { ArrowLeft, Share2, Users, Moon, Sun, BarChart3, Layout, Plus } from 'lucide-react';
+import { Button, Avatar, Modal } from '../../../components/ui';
+import { ArrowLeft, Share2, Users, Moon, Sun, BarChart3, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function DashboardPage() {
@@ -27,16 +28,18 @@ export default function DashboardPage() {
   const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
   const { isAuthenticated, user } = useAuth();
-  const { isConnected } = useSocket();
+  useSocket();
   const { tasks, onlineUsers, loadTasks, loadStats, joinBoard, leaveBoard } = useBoard(boardId);
-  const { board, columns, setBoard, setColumns, setTasks } = useBoardStore();
+  const { board, columns, setBoard, setColumns } = useBoardStore();
   const { token } = useUserStore();
 
   const [isLoading, setIsLoading] = useState(true);
   const [activeTask, setActiveTask] = useState(null);
+  const [selectedTask, setSelectedTask] = useState(null);
   const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
   const [selectedColumnId, setSelectedColumnId] = useState(null);
   const [isStatsOpen, setIsStatsOpen] = useState(false);
+  const [isShareOpen, setIsShareOpen] = useState(false);
   const [statsData, setStatsData] = useState(null);
   const [darkMode, setDarkMode] = useState(false);
 
@@ -90,9 +93,10 @@ export default function DashboardPage() {
       let columns = data.columns || [];
       if (columns.length === 0) {
         console.log('No columns in board response, fetching separately...');
+        const currentToken = useUserStore.getState().token;
         const columnsResponse = await fetch(`${API_URL}/api/boards/${boardId}/columns`, {
           headers: {
-            'Authorization': `Bearer ${useUserStore.getState().token ? `Bearer ${useUserStore.getState().token}` : ''}`,
+            'Authorization': currentToken ? `Bearer ${currentToken}` : '',
             'Content-Type': 'application/json'
           }
         });
@@ -160,8 +164,7 @@ export default function DashboardPage() {
   };
 
   const handleTaskClick = (task) => {
-    // Открыть модальное окно задачи
-    setActiveTask(task);
+    setSelectedTask(task);
   };
 
   const handleAddTask = (columnId) => {
@@ -296,7 +299,7 @@ export default function DashboardPage() {
               
               <div>
                 <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-                  {board?.name}
+                  {board?.title || board?.name}
                 </h1>
                 {board?.description && (
                   <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -317,7 +320,7 @@ export default function DashboardPage() {
                 Add Column
               </Button>
 
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" onClick={() => setIsShareOpen(true)}>
                 <Share2 className="w-4 h-4 mr-2" />
                 Share
               </Button>
@@ -394,11 +397,20 @@ export default function DashboardPage() {
       />
 
       {/* Task Detail Modal */}
-      <TaskDetailModal
-        isOpen={!!activeTask?.id && !activeTask.dragging}
-        onClose={() => setActiveTask(null)}
-        taskId={activeTask?.id}
+      {selectedTask?.id && (
+        <TaskDetailModal
+          isOpen={true}
+          onClose={() => setSelectedTask(null)}
+          taskId={selectedTask.id}
+          boardId={boardId}
+        />
+      )}
+
+      <ShareBoardModal
+        isOpen={isShareOpen}
+        onClose={() => setIsShareOpen(false)}
         boardId={boardId}
+        boardTitle={board?.title || board?.name}
       />
 
       {/* Stats Modal */}
